@@ -1,0 +1,5 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Framed login</title></head><body>
+<h1>Login in a frame</h1>
+<iframe id="fr" style="width:460px;height:340px;border:1px solid #ccc"></iframe>
+<script>document.getElementById("fr").src = new URLSearchParams(location.search).get("src") || "/plain.html";</script>
+</body></html>

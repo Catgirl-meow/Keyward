@@ -1,0 +1,80 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Two-factor authentication</title>
+<style>.code-inputs{display:flex;gap:8px}.code-input{width:40px;height:48px;text-align:center;font-size:22px}</style></head><body>
+<!-- Replica of mailfence.com's 2FA step (DOM from a page saved 2026-10-15; the site's script was
+     stripped by the save, so the behavior below is a typical split-code script, not theirs).
+     Served as the response to the login POST, at the same URL the login form posts to. -->
+<div class="logo"><a href="/mailfence/login.html">Mailfence</a></div>
+<div class="container">
+ <div class="header"><h1 id="form-title">Open your 2FA app and enter your code</h1></div>
+ <div class="error-message hidden" id="error-message">Invalid code</div>
+ <form id="verify-form" action="/mailfence/usw?type=L&amp;state=1" method="POST" accept-charset="utf-8">
+  <div class="code-inputs" id="totp-inputs">
+   <input type="text" class="code-input" maxlength="1" pattern="[0-9]" inputmode="numeric" data-index="0" autocomplete="off" value="">
+   <input type="text" class="code-input" maxlength="1" pattern="[0-9]" inputmode="numeric" data-index="1" autocomplete="off" value="">
+   <input type="text" class="code-input" maxlength="1" pattern="[0-9]" inputmode="numeric" data-index="2" autocomplete="off" value="">
+   <input type="text" class="code-input" maxlength="1" pattern="[0-9]" inputmode="numeric" data-index="3" autocomplete="off" value="">
+   <input type="text" class="code-input" maxlength="1" pattern="[0-9]" inputmode="numeric" data-index="4" autocomplete="off" value="">
+   <input type="text" class="code-input" maxlength="1" pattern="[0-9]" inputmode="numeric" data-index="5" autocomplete="off" value="">
+  </div>
+  <div class="backup-input-container hidden" id="backup-container">
+   <input type="text" class="backup-input" name="backupCode" id="backup-code" maxlength="12" autocomplete="off" placeholder="Recovery code">
+  </div>
+  <input type="hidden" name="lf" value="mailfence">
+  <input type="hidden" name="mode" value="totp">
+  <input type="hidden" name="totp" value="">
+  <input type="hidden" name="csrf" value="fixture-token">
+  <button type="submit" class="submit-btn" id="submit-btn" disabled><span id="submit-text">Send</span></button>
+  <div class="toggle-mode"><a class="backup_link" id="toggle-mode-link" href="javascript:void(0)">Alternative method: use a recovery code</a></div>
+ </form>
+</div>
+<script>
+(() => {
+  const boxes = [...document.querySelectorAll("#totp-inputs .code-input")];
+  const code = document.querySelector("input[name=totp]");
+  const mode = document.querySelector("input[name=mode]");
+  const backup = document.getElementById("backup-code");
+  const btn = document.getElementById("submit-btn");
+  const sync = () => {
+    code.value = boxes.map((b) => b.value).join("");
+    btn.disabled = mode.value === "totp" ? !/^\d{6}$/.test(code.value) : backup.value.trim().length < 8;
+  };
+  const spread = (digits, from) => {
+    [...digits].slice(0, boxes.length - from).forEach((c, j) => (boxes[from + j].value = c));
+    boxes[Math.min(from + digits.length, boxes.length) - 1].focus();
+  };
+  boxes.forEach((b, i) => {
+    b.addEventListener("input", () => {
+      const d = b.value.replace(/\D/g, "");
+      if (d.length > 1) spread(d, i);
+      else {
+        b.value = d;
+        if (d && boxes[i + 1]) boxes[i + 1].focus();
+      }
+      sync();
+    });
+    b.addEventListener("keydown", (e) => {
+      if (e.key === "Backspace" && !b.value && boxes[i - 1]) {
+        boxes[i - 1].value = "";
+        boxes[i - 1].focus();
+        sync();
+      }
+    });
+    b.addEventListener("paste", (e) => {
+      e.preventDefault();
+      spread((e.clipboardData.getData("text") || "").replace(/\D/g, ""), 0);
+      sync();
+    });
+  });
+  backup.addEventListener("input", sync);
+  document.getElementById("toggle-mode-link").addEventListener("click", () => {
+    const toBackup = mode.value === "totp";
+    mode.value = toBackup ? "backup" : "totp";
+    document.getElementById("totp-inputs").classList.toggle("hidden", toBackup);
+    document.getElementById("backup-container").classList.toggle("hidden", !toBackup);
+    (toBackup ? backup : boxes[0]).focus();
+    sync();
+  });
+  boxes[0].focus();
+})();
+</script>
+</body></html>

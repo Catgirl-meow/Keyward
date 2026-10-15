@@ -1,0 +1,7 @@
+.kws { padding: 12px; gap: 8px; }
+.kws-top { display: flex; align-items: center; gap: 12px; }
+.kws-top .text { flex: 1; min-width: 0; }
+.kws-top .title { font: 500 16px/22px var(--font); }
+.kws-top .sub { font-size: 13px; line-height: 18px; color: var(--on-surface-med); overflow: hidden; text-overflow: ellipsis; }
+.kws-folder { padding: 0 2px; }
+.kws-actions { display: flex; justify-content: flex-end; gap: 8px; }

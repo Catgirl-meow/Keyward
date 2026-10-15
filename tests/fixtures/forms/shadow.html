@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Shadow DOM login</title></head><body>
+<h1>Shadow DOM</h1>
+<login-box></login-box>
+<script>
+const mode = new URLSearchParams(location.search).get("mode") === "closed" ? "closed" : "open";
+customElements.define("login-box", class extends HTMLElement {
+  constructor() {
+    super();
+    const r = this.attachShadow({ mode });
+    r.innerHTML = '<style>input{display:block;margin:6px 0 14px;padding:8px;width:320px}</style>' +
+      '<form><label for="u">Username</label><input id="u" name="username" autocomplete="username">' +
+      '<label for="p">Password</label><input id="p" type="password" name="password"><button>Sign in</button></form>';
+    window.__shadow = r; // test access, also for closed roots
+  }
+});
+</script>
+</body></html>

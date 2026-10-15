@@ -1,0 +1,11 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Checkout</title></head><body>
+<h1>Checkout</h1>
+<form id="pay" onsubmit="return false">
+  <label for="cn">Card number</label><input id="cn" name="cardnumber">
+  <label for="nm">Name on card</label><input id="nm" name="ccname">
+  <label for="em">Expiry month</label><select id="em" name="exp-month"><option value="">MM</option><option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option><option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select>
+  <label for="ey">Expiry year</label><select id="ey" name="exp-year"><option value="">YYYY</option><option>2026</option><option>2027</option><option>2028</option><option>2029</option><option>2030</option><option>2031</option><option>2032</option></select>
+  <label for="cv">CVC</label><input id="cv" name="cvc" maxlength="4">
+  <button>Pay</button>
+</form>
+</body></html>

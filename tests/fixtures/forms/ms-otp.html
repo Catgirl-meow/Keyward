@@ -1,0 +1,6 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Step 3</title></head><body>
+<h1>Step 3: verification</h1>
+<form action="/verify" method="post"><input type="hidden" name="site" value="login"><input type="hidden" name="u" id="hu"><input type="hidden" name="p" id="hp">
+<label for="c">6-digit code from your authenticator app</label><input id="c" name="code" maxlength="6" inputmode="numeric"><button>Verify</button></form>
+<script>const q = new URLSearchParams(location.search); document.getElementById("hu").value = q.get("u") || ""; document.getElementById("hp").value = q.get("p") || "";</script>
+</body></html>

@@ -1,0 +1,11 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Mailfence - Login</title></head><body>
+<h1>Mailfence</h1>
+<p id="err" class="hidden" style="color:#b00">Invalid user ID or password.</p>
+<form name="authForm" id="authForm" action="/mailfence/usw?type=L&amp;state=1" method="post" autocomplete="on">
+  <input type="hidden" name="lf" value="mailfence">
+  <input type="text" name="UserID" id="UserID" placeholder="User ID" autocomplete="username" autocapitalize="off">
+  <input type="password" name="Password" id="Password" placeholder="Password" autocomplete="current-password">
+  <input type="submit" value="Enter" class="btn">
+</form>
+<script>if (new URLSearchParams(location.search).get("error")) document.getElementById("err").classList.remove("hidden");</script>
+</body></html>

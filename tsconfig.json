@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "erasableSyntaxOnly": true,
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["chrome"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noUncheckedIndexedAccess": false,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "paths": { "@core/*": ["./src/core/*"], "@ui/*": ["./src/ui/*"], "@platform/*": ["./src/platform/*"] }
+  },
+  "include": ["src", "scripts", "tests", "*.ts", "src/**/*.d.ts"]
+}

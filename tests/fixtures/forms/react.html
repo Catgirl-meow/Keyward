@@ -1,0 +1,34 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>React-style controlled inputs</title></head><body>
+<h1>Controlled inputs</h1>
+<form id="f" onsubmit="return false">
+  <label for="u">Username</label><input id="u" name="username">
+  <label for="p">Password</label><input id="p" name="password" type="password">
+  <button id="go" disabled>Log in</button>
+</form>
+<div id="state"></div>
+<script>
+// React's value tracker: a value set through the element's own setter (from page script) is
+// remembered, and the next input event is ignored as "no change". Only a write that bypasses
+// the instance property (what a password manager must do) makes the state update.
+const state = { username: "", password: "" };
+function track(node) {
+  const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+  let current = node.value;
+  Object.defineProperty(node, "value", { configurable: true, get() { return desc.get.call(this); }, set(v) { current = "" + v; desc.set.call(this, v); } });
+  node.addEventListener("input", () => {
+    const next = desc.get.call(node);
+    if (next === current) return;
+    current = next;
+    state[node.name] = next;
+    render();
+  });
+}
+function render() {
+  document.getElementById("state").textContent = JSON.stringify(state);
+  document.getElementById("go").disabled = !(state.username && state.password);
+}
+track(document.getElementById("u"));
+track(document.getElementById("p"));
+render();
+</script>
+</body></html>

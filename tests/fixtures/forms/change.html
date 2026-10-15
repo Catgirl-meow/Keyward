@@ -1,0 +1,10 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Change password</title></head><body>
+<h1>Change password</h1>
+<form action="/changed" method="post">
+  <input type="hidden" name="u" value="alice@example.test">
+  <label for="c">Current password</label><input id="c" type="password" name="current">
+  <label for="n">New password</label><input id="n" type="password" name="new">
+  <label for="r">Confirm new password</label><input id="r" type="password" name="confirm">
+  <button>Change</button>
+</form>
+</body></html>

@@ -1,0 +1,7 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Card field</title><style>body{margin:4px}input{margin:0;width:260px}</style></head><body>
+<script>
+const f = new URLSearchParams(location.search).get("f");
+const spec = { number: ["cardnumber", "cc-number", "Card number"], exp: ["exp-date", "cc-exp", "MM / YY"], cvc: ["cvc", "cc-csc", "CVC"] }[f];
+document.body.innerHTML = '<input name="' + spec[0] + '" autocomplete="' + spec[1] + '" placeholder="' + spec[2] + '" id="x">';
+</script>
+</body></html>

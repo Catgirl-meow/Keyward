@@ -1,0 +1,6 @@
+body { font: 16px/1.4 system-ui, sans-serif; margin: 32px; max-width: 520px; }
+input, select, button { display: block; margin: 6px 0 14px; padding: 8px 10px; font: inherit; width: 320px; box-sizing: border-box; }
+button, input[type=submit] { width: auto; }
+.row { margin-bottom: 8px; }
+.hidden { display: none; }
+#state { background: #eee; padding: 8px; white-space: pre; }
