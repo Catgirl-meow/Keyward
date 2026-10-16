@@ -1,9 +1,9 @@
 // Watchtower: the vault's health checks. Everything here runs on decrypted items in the page,
 // with no network; the two checks that need one (breached passwords via HIBP's k-anonymity
 // range API, sites that offer two-step login via 2fa.directory) take their data as arguments.
-import { baseDomain, parseUrl } from "../url/match.ts";
+import { baseDomain, equivalentSet, parseUrl, uriMatches } from "../url/match.ts";
 import { fromB64 } from "../util/bytes.ts";
-import { CipherType, IDENTITY_FIELDS, type CipherView } from "../vault/types.ts";
+import { CipherType, IDENTITY_FIELDS, UriMatch, type CipherView, type UriView } from "../vault/types.ts";
 
 export type CheckId =
   | "exposed"
@@ -12,6 +12,7 @@ export type CheckId =
   | "insecure"
   | "inactive2fa"
   | "duplicates"
+  | "duplicateUris"
   | "incomplete"
   | "expiring"
   | "weakKeys"
@@ -131,8 +132,46 @@ export function weakSshKey(publicKey: string | null | undefined): string | null 
   }
 }
 
+/** How websites match when an item doesn't say, and the equivalent-domain groups (sync). */
+export interface MatchRules {
+  defaultMatch?: number;
+  groups?: string[][];
+}
+
+/**
+ * Does website `a` already fill on website `b`? Keyguard's duplicate-website rule
+ * (CipherUrlDuplicateCheck): "never" websites are no one's duplicate, two regular expressions
+ * only when they are the same text, otherwise `a`'s rule is tried on `b`'s address.
+ */
+function covers(a: UriView, b: UriView, rules: MatchRules): boolean {
+  const def = rules.defaultMatch ?? UriMatch.Domain;
+  const am = a.match ?? def, bm = b.match ?? def;
+  if (am === UriMatch.Never || bm === UriMatch.Never) return false;
+  if (am === UriMatch.RegularExpression && bm === UriMatch.RegularExpression) return a.uri.trim() === b.uri.trim();
+  const page = parseUrl(b.uri);
+  return !!page && uriMatches(a.uri, am, page, def, equivalentSet(page.domain, rules.groups ?? []));
+}
+
+/** "shop.example.com/login" for a website, shortened for a one-line detail. */
+function shortUri(uri: string): string {
+  const s = uri.trim().replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  return s.length > 40 ? s.slice(0, 39) + "…" : s;
+}
+
+/** The first pair of an item's websites where one already fills on the other. */
+function overlappingUris(v: CipherView, rules: MatchRules): string | null {
+  const uris = v.login?.uris.filter((u) => u.uri.trim()) ?? [];
+  for (let i = 0; i < uris.length; i++)
+    for (let j = i + 1; j < uris.length; j++)
+      if (covers(uris[i], uris[j], rules) || covers(uris[j], uris[i], rules)) {
+        const [a, b] = [shortUri(uris[i].uri), shortUri(uris[j].uri)];
+        return a === b ? `${a} is saved twice` : `${a} and ${b} fill on the same pages`;
+      }
+  return null;
+}
+
 /** The checks that need no network. `score`: zxcvbn's (or a quick estimate). */
-export function analyze(views: CipherView[], score: ScoreFn, now = new Date()): Findings {
+export function analyze(views: CipherView[], score: ScoreFn, now = new Date(), rules: MatchRules = {}): Findings {
   const f: Findings = {};
   const add = (c: CheckId, id: string, detail: string) => (f[c] ??= []).push({ id, detail });
   const items = views.filter(live);
@@ -159,6 +198,11 @@ export function analyze(views: CipherView[], score: ScoreFn, now = new Date()): 
     return JSON.stringify([v.name.trim().toLowerCase(), v.login.username ?? "", hosts, v.login.password ?? ""]);
   };
   for (const g of groups(items, sig)) for (const v of g) add("duplicates", v.id, `${plural(g.length, "copy", "copies")} of this login`);
+
+  for (const v of items) {
+    const overlap = v.type === CipherType.Login ? overlappingUris(v, rules) : null;
+    if (overlap) add("duplicateUris", v.id, overlap);
+  }
 
   for (const v of items) {
     if (isEmpty(v)) add("empty", v.id, "Nothing saved in it");

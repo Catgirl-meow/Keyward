@@ -39,6 +39,8 @@ export const CHECKS: Check[] = [
     text: "Cards that have expired or expire within a month." },
   { id: "duplicates", title: "Duplicate items", icon: I.copyAll, tone: "info",
     text: "Logins saved more than once with the same name, username, websites and password." },
+  { id: "duplicateUris", title: "Duplicate websites", icon: I.link, tone: "info",
+    text: "Logins with two websites where one already fills on the other's pages. One of them can go." },
   { id: "incomplete", title: "Incomplete items", icon: I.unknownDoc, tone: "info",
     text: "Items missing something they need: a password, a website to fill on, a card number." },
   { id: "empty", title: "Empty items", icon: I.draft, tone: "info",

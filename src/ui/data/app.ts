@@ -149,6 +149,11 @@ export async function rawSends(): Promise<RawSend[]> {
   return (await db?.getAll<RawSend>("sends")) ?? [];
 }
 
+/** The server's equivalent-domain groups (google.com = youtube.com …), from the last sync. */
+export async function equivalentDomains(): Promise<string[][]> {
+  return (await db?.meta<string[][]>("domains")) ?? [];
+}
+
 export async function rawItem(id: string): Promise<RawCipher | undefined> {
   return db?.getCipher(id);
 }

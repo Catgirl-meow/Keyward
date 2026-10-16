@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { analyze, exposed, inactive2fa, parseTwoFaDirectory, weakSshKey, type CheckId, type Findings } from "../../src/core/watchtower/report.ts";
 import { quickStrength } from "../../src/core/watchtower/strength.ts";
 import { emptyView } from "../../src/core/vault/cipher.ts";
-import { CipherType, type CipherView } from "../../src/core/vault/types.ts";
+import { CipherType, type CipherView, type UriView } from "../../src/core/vault/types.ts";
 import { toB64, utf8 } from "../../src/core/util/bytes.ts";
 import { frontCode, unFrontCode } from "../../src/core/watchtower/frontcode.ts";
 
@@ -62,6 +62,35 @@ describe("watchtower", () => {
     expect(names(f, "insecure", vs)).toEqual(["Plain"]); // local addresses are left alone
     expect(names(f, "duplicates", vs)).toEqual(["Dup", "dup "]);
     expect(names(f, "trash", vs)).toEqual(["Deleted"]);
+  });
+
+  test("duplicate websites: one website of an item already fills on another (Keyguard's rule)", () => {
+    const withUris = (name: string, uris: { uri: string; match?: number | null }[]) => {
+      const v = login(name, {});
+      v.login!.uris = uris.map((u) => ({ uri: u.uri, match: (u.match ?? null) as UriView["match"] }));
+      return v;
+    };
+    const vs = [
+      withUris("Same domain", [{ uri: "https://example.com" }, { uri: "https://login.example.com/x" }]),
+      withUris("Twice", [{ uri: "https://twice.example/" }, { uri: "https://twice.example" }]),
+      withUris("Host vs subdomain", [{ uri: "https://a.example.org", match: 1 }, { uri: "https://b.example.org", match: 1 }]),
+      withUris("Starts with", [{ uri: "https://app.example.net/", match: 2 }, { uri: "https://app.example.net/login", match: 3 }]),
+      withUris("Never", [{ uri: "https://never.example", match: 5 }, { uri: "https://never.example" }]),
+      withUris("Two regexes", [{ uri: "^https://r\\.example/", match: 4 }, { uri: "^https://r\\.example/", match: 4 }]),
+      withUris("Other regexes", [{ uri: "^https://r\\.example/a", match: 4 }, { uri: "^https://r\\.example/b", match: 4 }]),
+      withUris("Regex covers", [{ uri: "^https://q\\.example/", match: 4 }, { uri: "https://q.example/login" }]),
+      withUris("Different sites", [{ uri: "https://one.example" }, { uri: "https://two.example" }]),
+      withUris("Equivalent", [{ uri: "https://youtube.com" }, { uri: "https://google.com" }]),
+      withUris("Blank", [{ uri: "https://blank.example" }, { uri: " " }]),
+    ];
+    const f = analyze(vs, score, undefined, { groups: [["google.com", "youtube.com"]] });
+    expect(names(f, "duplicateUris", vs)).toEqual(["Equivalent", "Regex covers", "Same domain", "Starts with", "Twice", "Two regexes"]);
+    expect(f.duplicateUris!.find((x) => x.id === vs[1].id)!.detail).toBe("twice.example is saved twice");
+    expect(f.duplicateUris!.find((x) => x.id === vs[0].id)!.detail).toBe("example.com and login.example.com/x fill on the same pages");
+    // Host matching tells the two subdomains apart; with no groups, google.com isn't youtube.com.
+    expect(ids(analyze(vs, score), "duplicateUris")).not.toContain(vs[9].id);
+    // With host matching as the default, two subdomains are separate websites.
+    expect(ids(analyze([vs[0]], score, undefined, { defaultMatch: 1 }), "duplicateUris")).toEqual([]);
   });
 
   test("the weak check gets the username and site as words to avoid", () => {

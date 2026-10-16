@@ -4,9 +4,9 @@
 import { effect, signal } from "@preact/signals";
 import type { CipherView, Summary } from "../../core/vault/types.ts";
 import { pwnedCount } from "../../core/watchtower/hibp.ts";
-import { analyze, exposed, inactive2fa, parseTwoFaDirectory, type CheckId, type Finding, type Findings, type ScoreFn } from "../../core/watchtower/report.ts";
-import { unFrontCode } from "../../core/watchtower/frontcode.ts";
-import { items, openItem, vaultOwner } from "./app.ts";
+import { analyze, exposed, inactive2fa, parseTwoFaDirectory, type CheckId, type Finding, type Findings, type MatchRules, type ScoreFn } from "../../core/watchtower/report.ts";
+import type { ScoreReply, ScoreRequest } from "../../workers/zxcvbn.ts";
+import { equivalentDomains, items, openItem, settings, vaultOwner } from "./app.ts";
 
 export type NetCheck = "exposed" | "inactive2fa";
 export type NetState = { state: "idle" } | { state: "running"; done: number; total: number } | { state: "done" } | { state: "error"; message: string };
@@ -37,29 +37,72 @@ effect(() => {
   report.value = null;
   reportError.value = null;
   net.value = IDLE;
+  scores = new Map();
 });
 
-let scorer: Promise<ScoreFn> | null = null;
+/** Scores already worked out for this vault, by [password, inputs]; dropped on lock. */
+let scores = new Map<string, number>();
+let worker: Worker | null = null;
+let workerIdle: ReturnType<typeof setTimeout> | undefined;
+let nextRequest = 0;
+
 /**
- * zxcvbn with common passwords, keyboard patterns and English words and first names, loaded
- * only here. The build gzips the dictionaries (scripts/build.ts, writeZxcvbnData) to keep the
- * extension under 2 MB; surnames and Wikipedia words are left out for the same reason.
+ * zxcvbn scores, worked out in a Web Worker (src/workers/zxcvbn.ts): it takes up to 40 ms a
+ * password, which on this page's thread froze the whole popup. The worker holds zxcvbn's
+ * dictionaries (common passwords, keyboard patterns, English words and first names) while it
+ * works, and is stopped once it has been idle for half a minute so they don't stay in memory.
  */
-function zxcvbnScore(): Promise<ScoreFn> {
-  return (scorer ??= Promise.all([import("@zxcvbn-ts/core"), zxcvbnData()]).then(([{ ZxcvbnFactory }, { graphs, dictionary }]) => {
-    const z = new ZxcvbnFactory({ graphs, dictionary });
-    return (pw: string, inputs: string[]) => z.check(pw, inputs).score;
-  })).catch((e) => {
-    scorer = null;
-    throw e;
+function scoreInWorker(pairs: [string, string[]][]): Promise<number[]> {
+  if (!pairs.length) return Promise.resolve([]);
+  clearTimeout(workerIdle);
+  const w = (worker ??= new Worker(chrome.runtime.getURL("workers/zxcvbn.js")));
+  const id = ++nextRequest;
+  return new Promise<number[]>((resolve, reject) => {
+    const done = () => {
+      w.removeEventListener("message", onMessage);
+      w.removeEventListener("error", onError);
+      workerIdle = setTimeout(() => {
+        if (worker === w) worker = null;
+        w.terminate();
+      }, 30_000);
+    };
+    const onMessage = (e: MessageEvent<ScoreReply>) => {
+      if (e.data.id !== id) return;
+      done();
+      if ("error" in e.data) reject(new Error(e.data.error));
+      else resolve(e.data.scores);
+    };
+    const onError = (e: ErrorEvent) => {
+      done();
+      if (worker === w) worker = null;
+      w.terminate();
+      reject(new Error(e.message || "The password checker stopped"));
+    };
+    w.addEventListener("message", onMessage);
+    w.addEventListener("error", onError);
+    w.postMessage({ id, pairs } satisfies ScoreRequest);
   });
 }
 
-async function zxcvbnData(): Promise<{ graphs: any; dictionary: Record<string, string[]> }> {
-  const res = await fetch("/data/zxcvbn.json.gz");
-  if (!res.ok || !res.body) throw new Error("Password dictionaries are missing");
-  const data = await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).json();
-  return { graphs: data.graphs, dictionary: Object.fromEntries(Object.entries(data.lists as Record<string, string>).map(([k, v]) => [k, unFrontCode(v)])) };
+/**
+ * The local checks with zxcvbn's scores. analyze() wants a score at once, so it runs twice: the
+ * first pass collects the passwords it asks about, the worker scores those it hasn't seen yet,
+ * and the second pass reads the answers.
+ */
+async function analyzeScored(views: CipherView[], gen: number): Promise<Findings> {
+  const key = (pw: string, inputs: string[]) => JSON.stringify([pw, inputs]);
+  const wanted = new Map<string, [string, string[]]>();
+  const rules: MatchRules = { defaultMatch: settings.value.defaultUriMatch, groups: await equivalentDomains() };
+  analyze(views, (pw, inputs) => {
+    const k = key(pw, inputs);
+    if (!scores.has(k)) wanted.set(k, [pw, inputs]);
+    return 4;
+  }, undefined, rules);
+  const asked = [...wanted.values()];
+  const got = await scoreInWorker(asked);
+  if (gen !== generation) throw new Error("stale");
+  asked.forEach(([pw, inputs], i) => scores.set(key(pw, inputs), got[i]));
+  return analyze(views, ((pw, inputs) => scores.get(key(pw, inputs)) ?? 4) satisfies ScoreFn, undefined, rules);
 }
 
 /** Every item decrypted, trash included; an item that fails to decrypt is left out. */
@@ -76,9 +119,9 @@ export async function runReport(): Promise<void> {
   checking.value = true;
   reportError.value = null;
   try {
-    const [score, views] = await Promise.all([zxcvbnScore(), openAll(basis)]);
+    const views = await openAll(basis);
     if (gen !== generation) return;
-    const findings = analyze(views, score);
+    const findings = await analyzeScored(views, gen);
     const live = new Set(views.filter((v) => !v.deletedDate).map((v) => v.id));
     const prev = report.value?.findings ?? {};
     for (const c of ["exposed", "inactive2fa"] as const) if (prev[c]) findings[c] = prev[c]!.filter((f) => live.has(f.id));

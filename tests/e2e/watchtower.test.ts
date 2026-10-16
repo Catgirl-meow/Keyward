@@ -70,6 +70,9 @@ const SEED: CipherView[] = [
   emptyView(CipherType.SecureNote, { name: "Empty note" }),
   emptyView(CipherType.Card, { name: "Old card", card: { cardholderName: "Kay", brand: "Visa", number: "4111111111111111", expMonth: "1", expYear: "2020", code: "123" } }),
   emptyView(CipherType.SshKey, { name: "Old key", sshKey: key }),
+  loginItem("Two sites", randomPassword(), ["https://shop.example", "https://www.shop.example/login"]),
+  // Strong, distinct passwords for zxcvbn to chew on: scoring them used to freeze the page.
+  ...Array.from({ length: 120 }, (_, i) => loginItem(`Filler ${i}`, randomPassword(), [`https://filler-${i}.example`])),
 ];
 
 // ---------------------------------------------------------------- stand-ins for the two services
@@ -146,10 +149,23 @@ describe(`watchtower (${target})`, () => {
   });
   after(async () => kw?.close());
 
-  test("each check finds its seeded item", async () => {
+  test("each check finds its seeded item, and the page never stalls while they run", async () => {
+    // The longest gap between ticks of a 20 ms timer: how long the page was unresponsive.
+    await page.evaluate(() => {
+      const w = window as any;
+      let last = performance.now();
+      w.__gap = 0;
+      w.__beat = setInterval(() => {
+        const now = performance.now();
+        w.__gap = Math.max(w.__gap, now - last);
+        last = now;
+      }, 20);
+    });
     await clickText(kw, page, "Watchtower", "nav button");
     await page.waitForSelector(".wt-grid .wt-card", { timeout: 15_000 });
-    await waitForCount("weak", "1");
+    await waitForCount("weak", "1", 30_000);
+    const gap = await page.evaluate(() => (clearInterval((window as any).__beat), (window as any).__gap as number));
+    assert.ok(gap < 250, `the page stalled for ${Math.round(gap)} ms`);
     assert.deepEqual(await counts(), {
       exposed: "",
       reused: "4", // the two "Reused" items and the two copies of "Dup"
@@ -159,6 +175,7 @@ describe(`watchtower (${target})`, () => {
       weakKeys: "1",
       expiring: "1",
       duplicates: "2",
+      duplicateUris: "1",
       incomplete: "1",
       empty: "1",
       trash: "1",
@@ -179,6 +196,9 @@ describe(`watchtower (${target})`, () => {
     await back();
     await openCard("reused");
     assert.deepEqual((await listed()).map(([n, d]) => `${n}: ${d}`).sort(), ["Dup: Used in 2 items", "Dup: Used in 2 items", "Reused A: Used in 2 items", "Reused B: Used in 2 items"]);
+    await back();
+    await openCard("duplicateUris");
+    assert.deepEqual(await listed(), [["Two sites", "shop.example and www.shop.example/login fill on the same pages"]]);
     await back();
     await page.waitForSelector(".wt-grid", { timeout: 8000 });
   });

@@ -81,6 +81,7 @@ const SCRIPT_ENTRIES: Record<string, string> = {
   "cs/passkey-main": "src/content/passkey.main.ts",
   "cs/passkey-relay": "src/content/passkey.relay.ts",
   "cs/webauthn2fa": "src/content/webauthn2fa.ts",
+  "workers/zxcvbn": "src/workers/zxcvbn.ts",
 };
 
 async function buildTarget(target: Target) {
