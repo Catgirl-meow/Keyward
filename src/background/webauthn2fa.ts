@@ -37,8 +37,10 @@ async function assertInPage(raw: any): Promise<any> {
     return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   };
   document.title = "Confirm with your security key — Keyward";
-  document.body.innerHTML =
-    '<div style="font:16px system-ui;padding:48px;text-align:center">Keyward is asking your passkey or security key to confirm the login…</div>';
+  const note = document.createElement("div");
+  note.style.cssText = "font:16px system-ui;padding:48px;text-align:center";
+  note.textContent = "Keyward is asking your passkey or security key to confirm the login…";
+  document.body.replaceChildren(note);
   let cred: PublicKeyCredential;
   try {
     cred = (await navigator.credentials.get({

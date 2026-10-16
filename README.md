@@ -14,7 +14,11 @@ npm run smoke            # both browsers load the extension and render the popup
 npm test                 # unit tests
 npm run e2e              # end-to-end against the local server
 node tests/e2e/real-server.ts   # small smoke test on pass.catg1rl.com (test account in tests/.env.test)
+npm run package          # release zips in dist/ (see docs/INSTALL.md)
 ```
+
+Installing a release: [docs/INSTALL.md](docs/INSTALL.md). Checks to do by hand on your own
+server and sites: [docs/MANUAL-TEST.md](docs/MANUAL-TEST.md).
 
 The local server keeps its data on tmpfs: after `npm run dev-server down && npm run dev-server up`
 run `npm run seed` again.

@@ -109,7 +109,14 @@ export class Overlay {
     b.type = "button";
     b.tabIndex = -1;
     b.title = "Keyward";
-    b.innerHTML = `<svg viewBox="0 -960 960 960" aria-hidden="true"><path d="${keyIcon}"/></svg>`;
+    // Built node by node, not with innerHTML: nothing here parses markup in the page.
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 -960 960 960");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", keyIcon);
+    svg.append(path);
+    b.append(svg);
     // mousedown, not click: keep the field focused.
     b.addEventListener("mousedown", (e) => {
       e.preventDefault();

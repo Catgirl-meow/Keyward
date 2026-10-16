@@ -30,7 +30,17 @@ export interface Keyward {
   close(): Promise<void>;
 }
 
-export async function launch(target: Target, opts: { headless?: boolean; slowMo?: number; profile?: string } = {}): Promise<Keyward> {
+export interface LaunchOptions {
+  headless?: boolean;
+  slowMo?: number;
+  profile?: string;
+  /** LibreWolf: the extension is already installed in the profile (an .xpi in <profile>/extensions). */
+  sideloaded?: boolean;
+  /** LibreWolf: prefs set last, over the test defaults. */
+  prefs?: Record<string, unknown>;
+}
+
+export async function launch(target: Target, opts: LaunchOptions = {}): Promise<Keyward> {
   const headless = opts.headless ?? process.env.KW_HEADFUL !== "1";
   // Reusing a profile simulates a browser restart (storage.local survives, storage.session doesn't).
   const profile = opts.profile ?? mkdtempSync(join(tmpdir(), `kw-${target}-`));
@@ -85,9 +95,10 @@ export async function launch(target: Target, opts: { headless?: boolean; slowMo?
         ...(process.env.KW_CONSOLE ? { "devtools.console.stdout.content": true, "devtools.console.stdout.chrome": true, "browser.dom.window.dump.enabled": true } : {}),
         // Autofill fixtures live on *.localhost names (tests/fixtures/server.ts).
         "network.dns.localDomains": "login.localhost,mailfence.localhost,other.localhost,shop.localhost",
+        ...opts.prefs,
       },
     });
-    await browser.installExtension(ext);
+    if (!opts.sideloaded) await browser.installExtension(ext);
     base = `moz-extension://${FIREFOX_UUID}/`;
   }
 
