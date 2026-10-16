@@ -36,7 +36,6 @@ export interface Settings {
     neverSave: string[]; // hostnames where "Never" was chosen in the save prompt
   };
   passkeys: { enabled: boolean; excluded: string[] };
-  sshAgent: { enabled: boolean; confirmEachUse: boolean };
   generator: Record<string, unknown>;
 }
 
@@ -67,7 +66,6 @@ export const DEFAULT_SETTINGS: Settings = {
     neverSave: [],
   },
   passkeys: { enabled: true, excluded: [] },
-  sshAgent: { enabled: false, confirmEachUse: true },
   generator: {},
 };
 

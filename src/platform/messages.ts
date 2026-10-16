@@ -42,13 +42,17 @@ export interface RpcMap {
   "folder.delete": [{ accountId?: string; id: string }, void];
   // autofill
   "autofill.pageMatches": [{ tabId?: number; url?: string }, { url: string; host: string; tabId?: number; matches: PageMatch[] }];
-  "autofill.fill": [{ tabId: number; itemId: string; force?: boolean }, { filled: boolean; totpCopied?: boolean; error?: string; confirm?: string }];
+  "autofill.fill": [{ tabId: number; itemId: string; force?: boolean; verified?: boolean }, { filled: boolean; totpCopied?: boolean; error?: string; confirm?: string; reprompt?: boolean }];
   // inline menu (menu.html inside a page; the background knows its tab and parent frame)
-  "menu.ctx": [{ token: string }, { tabId: number; frameId: number; purpose: string | null; host: string; locked: boolean; items: (PageMatch & { host: string | null })[] }];
-  "menu.pick": [{ token: string; itemId?: string; generated?: string }, { filled: boolean; error?: string; reprompt?: boolean; confirm?: string }];
+  "menu.ctx": [{ token: string }, { tabId: number; frameId: number; purpose: string | null; host: string; locked: boolean; items: (PageMatch & { host: string | null })[]; passkeys: PasskeyOffer[] }];
+  "menu.passkey": [{ token: string; itemId: string; credentialId: string }, { done: boolean; dialog?: boolean; error?: string }];
+  "menu.pick": [{ token: string; itemId?: string; generated?: string; force?: boolean }, { filled: boolean; error?: string; reprompt?: boolean; confirm?: string }];
   // save prompt (savebar.html)
   "save.ctx": [{ token: string }, { kind: "save" | "update" | "locked" | "none"; tabId?: number; host: string; username: string; itemName?: string; folders?: { id: string; name: string }[]; type?: string }];
   "save.decide": [{ token: string; action: "save" | "update" | "never" | "dismiss"; folderId?: string | null }, void];
+  // passkey dialog (passkey.html inside a page)
+  "pk.ctx": [{ token: string }, PasskeyCtx | null];
+  "pk.decide": [{ token: string; action: "use" | "save" | "fallback" | "cancel"; itemId?: string; credentialId?: string }, { done: boolean }];
   // clipboard
   "clipboard.copy": [{ text: string; sensitive?: boolean }, void];
   // misc
@@ -106,6 +110,32 @@ export function serve(handlers: Handlers, extra?: (msg: any, sender: chrome.runt
     return true;
   });
 }
+
+/** A passkey offered for a sign-in (the dialog, or the inline menu for an autofill request). */
+export interface PasskeyOffer {
+  itemId: string;
+  credentialId: string;
+  itemName: string;
+  userName: string | null;
+  displayName: string | null;
+  reprompt: boolean;
+}
+
+export type PasskeyCtx =
+  /** picked: the user chose this passkey in the inline menu (the dialog only confirms it) */
+  | { kind: "get"; host: string; rpId: string; passkeys: PasskeyOffer[]; picked?: boolean }
+  | {
+      kind: "create";
+      host: string;
+      rpId: string;
+      rpName: string | null;
+      userName: string | null;
+      displayName: string | null;
+      /** excludeCredentials names a passkey already saved */
+      exists: boolean;
+      /** logins for this site the passkey can be added to */
+      targets: { itemId: string; name: string; userName: string | null; hasPasskey: boolean; reprompt: boolean }[];
+    };
 
 /** Fan-out of "something changed" notices to every open extension page. */
 export type Broadcast =

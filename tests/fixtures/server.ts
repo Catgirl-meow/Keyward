@@ -6,10 +6,11 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { totpNow } from "../lib/vw.ts";
+import { rpRoute } from "./rp.ts";
 
 export const FX = {
-  port: 8090,
-  url: (host: keyof typeof HOSTS, path = "/") => `http://${HOSTS[host]}:8090${path}`,
+  port: Number(process.env.KW_FIXTURE_PORT) || 8090,
+  url: (host: keyof typeof HOSTS, path = "/") => `http://${HOSTS[host]}:${FX.port}${path}`,
   login: { user: "alice@example.test", pass: "Plain-Pass-1", totp: "JBSWY3DPEHPK3PXP" },
   mailfence: { user: "kay", pass: "Mf-Pass-2", totp: "GEZDGNBVGY3TQOJQ" },
   other: { user: "framed", pass: "Frame-Pass-3" },
@@ -41,6 +42,10 @@ export function startFixtures(port = FX.port): Promise<Server> {
     try {
       if (req.method === "POST") {
         const b = await body(req);
+        if (url.pathname.startsWith("/rp/")) {
+          const r = await rpRoute(url.pathname, b, `http://${req.headers.host}`);
+          if (r) return res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(r));
+        }
         switch (url.pathname) {
           case "/done":
           case "/signup":

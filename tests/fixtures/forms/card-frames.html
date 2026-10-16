@@ -1,7 +1,6 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Split card frames</title><style>iframe{display:block;border:1px solid #ccc;width:300px;height:48px;margin:8px 0}</style></head><body>
 <h1>Pay (card fields in frames)</h1>
 <label>Name on card</label><input name="ccname" id="nm" autocomplete="cc-name">
-<iframe id="f1" src="http://other.localhost:8090/card-part.html?f=number"></iframe>
-<iframe id="f2" src="http://other.localhost:8090/card-part.html?f=exp"></iframe>
-<iframe id="f3" src="http://other.localhost:8090/card-part.html?f=cvc"></iframe>
+<!-- Cross-site frames on this page's own port (KW_FIXTURE_PORT may move the fixtures off 8090). -->
+<script>for (const [id, f] of [["f1", "number"], ["f2", "exp"], ["f3", "cvc"]]) document.write(`<iframe id="${id}" src="http://other.localhost:${location.port}/card-part.html?f=${f}"></iframe>`);</script>
 </body></html>

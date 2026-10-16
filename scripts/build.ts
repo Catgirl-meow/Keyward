@@ -2,7 +2,7 @@
 //   node scripts/build.ts [--target=chromium|firefox] [--watch] [--dev]
 import * as esbuild from "esbuild";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 import { manifest, CHROMIUM_KEY_FILE, type Target } from "./manifest.ts";
 
@@ -81,7 +81,8 @@ const SCRIPT_ENTRIES: Record<string, string> = {
 };
 
 async function buildTarget(target: Target) {
-  const out = join(root, "dist", target);
+  // KW_DIST: build somewhere else (two sessions testing at once must not share dist/).
+  const out = join(process.env.KW_DIST ? resolve(process.env.KW_DIST) : join(root, "dist"), target);
   if (!watch) rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
 

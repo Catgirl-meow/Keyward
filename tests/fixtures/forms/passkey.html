@@ -1,0 +1,61 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Passkey site</title></head><body>
+<h1>Passkey site</h1>
+<!-- A relying party: options and verification come from @simplewebauthn/server (tests/fixtures/rp.ts). -->
+<label for="user">Username</label><input id="user" value="kay" autocomplete="username webauthn">
+<button id="reg">Create a passkey</button>
+<button id="login">Sign in with a passkey</button>
+<button id="login-user">Sign in as this user</button>
+<p id="result"></p>
+<script>
+const out = (s) => (document.getElementById("result").textContent = s);
+const post = (path, body) => fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
+const params = new URLSearchParams(location.search);
+const timeout = Number(params.get("timeout")) || 60000;
+// ?conditional: passkeys offered in the username field's autofill, as sign-in pages do on load.
+let conditional = null;
+const autofillSignIn = async () => {
+  if (!(await PublicKeyCredential.isConditionalMediationAvailable?.())) return out("conditional unavailable");
+  conditional = new AbortController();
+  try {
+    const o = await post("/rp/auth/options", { timeout });
+    out("waiting");
+    const cred = await navigator.credentials.get({ mediation: "conditional", publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(o), signal: conditional.signal });
+    const v = await post("/rp/auth/verify", { response: cred.toJSON() });
+    out(v.verified ? `signed in as ${v.user} (autofill)` : `sign-in failed ${v.error ?? ""}`);
+  } catch (e) {
+    if (e.name !== "AbortError") out(`error ${e.name}: ${e.message}`);
+  }
+};
+document.getElementById("reg").onclick = async () => {
+  out("working");
+  try {
+    const o = await post("/rp/reg/options", { user: document.getElementById("user").value, timeout });
+    const cred = await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(o) });
+    const native = !Object.prototype.hasOwnProperty.call(cred, "id");
+    const v = await post("/rp/reg/verify", { response: cred.toJSON() });
+    out(v.verified ? `registered ${cred.id} ${native ? "browser" : "keyward"} backedUp=${v.backedUp}` : "registration failed");
+  } catch (e) {
+    out(`error ${e.name}: ${e.message}`);
+  }
+};
+const signIn = async (user) => {
+  conditional?.abort();
+  out("working");
+  try {
+    const o = await post("/rp/auth/options", { user, timeout });
+    const cred = await navigator.credentials.get({ publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(o) });
+    const ext = cred.getClientExtensionResults();
+    const v = await post("/rp/auth/verify", { response: cred.toJSON() });
+    out(v.verified && ext && cred instanceof PublicKeyCredential ? `signed in as ${v.user}` : `sign-in failed ${v.error ?? ""}`);
+  } catch (e) {
+    out(`error ${e.name}: ${e.message}`);
+  }
+};
+if (params.has("conditional")) {
+  document.getElementById("user").value = "";
+  autofillSignIn();
+}
+document.getElementById("login").onclick = () => signIn(null);
+document.getElementById("login-user").onclick = () => signIn(document.getElementById("user").value);
+</script>
+</body></html>

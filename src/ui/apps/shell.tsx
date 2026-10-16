@@ -4,15 +4,16 @@ import "../components/kit.css";
 import "./app.css";
 import { signal } from "@preact/signals";
 import { h, render, type ComponentChildren, type ComponentType } from "preact";
-import { useEffect } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import type { Summary } from "../../core/vault/types.ts";
 import { loadPending } from "../../platform/login.ts";
 import { rpc, type PageMatch } from "../../platform/messages.ts";
-import { ConfirmHost, EmptyState, Icon, MenuHost, Toasts, toast } from "../components/kit.tsx";
+import { ConfirmHost, EmptyState, Icon, MenuHost, Toasts, confirm, toast } from "../components/kit.tsx";
 import * as I from "../icons/index.ts";
 import { applyCachedTheme } from "../theme/theme.ts";
 import { account, addingAccount, boot, phase, syncNow, syncStatus, syncing } from "../data/app.ts";
 import { direction, home, pop, push, stack, tab, type Route, type Tab } from "../data/nav.ts";
+import { recentlyVerified } from "../data/reprompt.ts";
 import { AccountButton } from "../screens/account-menu.tsx";
 import { newItemMenu, selectedId, usePageMatches, VaultList } from "../screens/vault-list.tsx";
 
@@ -45,6 +46,7 @@ const GeneratorScreen = lazy(() => import("../screens/generator.tsx").then((m) =
 const ItemEdit = lazy(() => import("../screens/item-edit.tsx").then((m) => m.ItemEdit));
 const ItemView = lazy(() => import("../screens/item-view.tsx").then((m) => m.ItemView));
 const PasswordHistory = lazy(() => import("../screens/item-view.tsx").then((m) => m.PasswordHistory));
+const RepromptSheet = lazy(() => import("../screens/item-view.tsx").then((m) => m.RepromptSheet));
 const settingsMod = () => import("../screens/settings.tsx");
 const SettingsScreen = lazy(() => settingsMod().then((m) => m.SettingsScreen));
 const SettingsPage = lazy(() => settingsMod().then((m) => m.SettingsPage));
@@ -150,7 +152,7 @@ function tabRoot(t: Tab, mode: Mode, pm: ReturnType<typeof usePageMatches>, fill
   }
 }
 
-function routeView(r: Route, embedded: boolean, fill?: (id: string) => void): ComponentChildren {
+function routeView(r: Route, embedded: boolean, fill?: (id: string, verified?: boolean) => void): ComponentChildren {
   switch (r.name) {
     case "item":
       return <ItemView id={r.id} embedded={embedded} onFill={fill} />;
@@ -186,11 +188,26 @@ function Unlocked({ mode }: { mode: Mode }) {
   const s = stack.value;
   const top = s[s.length - 1];
   const twoPane = !popup && wide.value && tab.value === "vault";
+  const [reprompt, setReprompt] = useState<((ok: boolean) => void) | null>(null);
+  const askMasterPassword = () => new Promise<boolean>((resolve) => setReprompt(() => resolve));
 
-  async function fill(id: string) {
-    if (!pm?.tabId) return;
+  async function fill(id: string, verified = false) {
+    const tabId = pm?.tabId;
+    if (!tabId) return;
+    verified ||= recentlyVerified();
     try {
-      const r = await rpc("autofill.fill", { tabId: pm.tabId, itemId: id });
+      let r = await rpc("autofill.fill", { tabId, itemId: id, verified });
+      // Master-password re-prompt: the background fills a protected item only once it's confirmed.
+      if (r.reprompt) {
+        if (!(await askMasterPassword())) return;
+        verified = true;
+        r = await rpc("autofill.fill", { tabId, itemId: id, verified });
+      }
+      // A cross-site frame, or an https item on an http page: the background asks first.
+      if (r.confirm) {
+        if (!(await confirm("Check before filling", r.confirm, "Fill"))) return;
+        r = await rpc("autofill.fill", { tabId, itemId: id, verified, force: true });
+      }
       if (r.filled) {
         if (r.totpCopied) toast("Filled · verification code copied", { tone: "ok" });
         setTimeout(() => window.close(), r.totpCopied ? 600 : 0);
@@ -225,6 +242,18 @@ function Unlocked({ mode }: { mode: Mode }) {
   }, [twoPane, top]);
 
   const root = tabRoot(tab.value, mode, pm, fill, open);
+  const verify = reprompt && (
+    <RepromptSheet
+      onDone={() => {
+        setReprompt(null);
+        reprompt(true);
+      }}
+      onCancel={() => {
+        setReprompt(null);
+        reprompt(false);
+      }}
+    />
+  );
 
   if (twoPane) {
     return (
@@ -253,6 +282,7 @@ function Unlocked({ mode }: { mode: Mode }) {
           New
         </button>
       )}
+      {verify}
     </main>
   );
 

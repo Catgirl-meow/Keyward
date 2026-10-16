@@ -8,6 +8,18 @@ import { unlockedCtx } from "./ctx.ts";
 
 const inflight = new Map<string, Promise<SyncStatus>>();
 
+let queue: Promise<unknown> = Promise.resolve();
+/** A request that never answers mustn't hold up every later write: its turn ends after this. */
+const TURN_MAX_MS = 120_000;
+/** Full syncs and vault writes take turns. A sync replaces the stored vault with the server's
+ * snapshot, so a write that landed between its fetch and its store would be lost locally (an
+ * edit reverted, a new item gone until the next sync). Not reentrant: never nest. */
+export function vaultTurn<T>(fn: () => Promise<T>): Promise<T> {
+  const run = queue.then(fn, fn);
+  queue = Promise.race([run.catch(() => {}), new Promise((r) => setTimeout(r, TURN_MAX_MS))]);
+  return run;
+}
+
 export function syncAccount(accountId?: string, force = false): Promise<SyncStatus> {
   const key = accountId ?? "";
   let p = inflight.get(key);
@@ -32,7 +44,7 @@ async function doSync(accountId: string | undefined, force: boolean): Promise<Sy
       }
     }
     const before = [...c.ring.orgs.keys()].sort().join();
-    const r = await fullSync({ api: c.api, db: c.db, userKey: c.ring.user, cacheKey: c.cacheKey, orgKeys: new Map(c.ring.orgs) });
+    const r = await vaultTurn(() => fullSync({ api: c.api, db: c.db, userKey: c.ring.user, cacheKey: c.cacheKey, orgKeys: new Map(c.ring.orgs) }));
     if ([...r.ring.orgs.keys()].sort().join() !== before) await setUnlocked(id, r.ring);
     status = { ok: true, at: Date.now(), total: r.total, decrypted: r.decrypted };
     broadcast({ kind: "vault", accountId: id, full: true });

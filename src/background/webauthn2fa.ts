@@ -5,6 +5,9 @@ import { serverUrls } from "../core/api/client.ts";
 import { TwoFactorProvider } from "../core/auth/login.ts";
 import { finishLogin, loadPending, submitTwoFactor } from "../platform/login.ts";
 
+/** Tabs where Keyward itself asks for a WebAuthn assertion: its passkey shim stays out of them. */
+export const twoFactorTabs = new Set<number>();
+
 function waitComplete(tabId: number, timeoutMs = 20000): Promise<void> {
   return new Promise((res, rej) => {
     const t = setTimeout(() => {
@@ -77,6 +80,7 @@ export async function webauthnTwoFactor(remember: boolean, afterLogin: (accountI
   if (!options) return { ok: false, error: "Security keys are not enabled for this account" };
   const [prev] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   const tab = await chrome.tabs.create({ url: serverUrls(p.server).base + "/404.html#keyward-webauthn", active: true });
+  twoFactorTabs.add(tab.id!);
   try {
     await waitComplete(tab.id!);
     const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id! }, world: "MAIN", func: assertInPage, args: [options] });
@@ -94,6 +98,7 @@ export async function webauthnTwoFactor(remember: boolean, afterLogin: (accountI
     const msg = (e as Error)?.message ?? String(e);
     return { ok: false, error: /NotAllowedError|timed out|cancel/i.test(msg) ? "Cancelled or timed out" : msg };
   } finally {
+    twoFactorTabs.delete(tab.id!);
     await chrome.tabs.remove(tab.id!).catch(() => {});
     if (prev?.id) await chrome.tabs.update(prev.id, { active: true }).catch(() => {});
     await chrome.action.openPopup?.().catch(() => {});

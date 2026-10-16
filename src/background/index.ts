@@ -17,6 +17,7 @@ import { vaultHandlers } from "./vault.ts";
 import { autofillHandlers, onAutofillCommand, onContextMenu, installContextMenus, onTabEvent, onTabUpdated, contentMessage } from "./autofill.ts";
 import { saveHandlers } from "./save.ts";
 import { installBasicAuth } from "./basicauth.ts";
+import { dropPasskeyTab, passkeyHandlers, passkeyMessage, syncPasskeyScripts } from "./passkey.ts";
 
 async function afterUnlock(accountId: string, userKeyB64: string, firstLogin: boolean) {
   const user = SymKey.fromB64(userKeyB64);
@@ -67,8 +68,9 @@ serve(
     ...vaultHandlers,
     ...autofillHandlers,
     ...saveHandlers,
+    ...passkeyHandlers,
   },
-  contentMessage,
+  (msg, sender, respond) => contentMessage(msg, sender, respond) || passkeyMessage(msg, sender, respond),
 );
 
 chrome.alarms.onAlarm.addListener(async (a) => {
@@ -99,11 +101,13 @@ chrome.runtime.onStartup.addListener(async () => {
   const s = await loadAccounts();
   for (const a of s.list) if (!(await isUnlocked(a.id))) await restoreNeverLock(a.id);
   await refreshIcon();
+  await syncPasskeyScripts();
 });
 
 chrome.runtime.onInstalled.addListener(async () => {
   await installContextMenus();
   await refreshIcon();
+  await syncPasskeyScripts();
 });
 
 chrome.idle.onStateChanged.addListener(async (state) => {
@@ -122,6 +126,8 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 chrome.storage.onChanged.addListener((ch, area) => {
+  // Unlock, lock, account switch or the passkey setting: the page shim follows.
+  if ((area === "session" && Object.keys(ch).some((k) => k.startsWith("unlocked:"))) || (area === "local" && (ch.settings || ch.accounts))) void syncPasskeyScripts();
   if (area !== "local" || !ch.settings) return;
   const before = (ch.settings.oldValue as { lockTimeout?: number } | undefined)?.lockTimeout;
   const after = (ch.settings.newValue as { lockTimeout?: number } | undefined)?.lockTimeout ?? LockTimeout.OnRestart;
@@ -133,4 +139,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => onContextMenu(info, tab
 chrome.tabs.onActivated.addListener(({ tabId }) => onTabEvent(tabId));
 chrome.tabs.onUpdated.addListener(onTabUpdated);
 installBasicAuth();
-chrome.tabs.onRemoved.addListener((tabId) => onTabEvent(tabId, true));
+chrome.tabs.onRemoved.addListener((tabId) => {
+  onTabEvent(tabId, true);
+  void dropPasskeyTab(tabId);
+});

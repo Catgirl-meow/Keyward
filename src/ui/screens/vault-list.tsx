@@ -417,8 +417,11 @@ export function usePageMatches(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
+    // popup.html?tab=<id>: a popup opened as a tab or window (tests, a popped-out popup) fills
+    // that tab instead of the active one, which would be itself.
+    const tabId = Number(new URLSearchParams(location.search).get("tab")) || undefined;
     const load = () =>
-      rpc("autofill.pageMatches", {})
+      rpc("autofill.pageMatches", { tabId })
         .then((r) => alive && setPm(r))
         .catch(() => alive && setPm(null));
     void load();

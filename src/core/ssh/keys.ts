@@ -1,4 +1,4 @@
-// OpenSSH private-key parsing/serialisation and WebCrypto key import for signing.
+// OpenSSH private-key parsing and serialisation for SSH-key items (Keyward has no SSH agent).
 // Supports unencrypted ed25519, ecdsa-sha2-nistp{256,384,521} and ssh-rsa keys (the formats
 // Bitwarden stores for SSH-key items).
 import { sha256 } from "../crypto/primitives.ts";
@@ -50,7 +50,6 @@ export function mpint(b: Uint8Array): Uint8Array {
   return sshString(v);
 }
 
-const b64u = (b: Uint8Array) => toB64(b).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const unpad = (b: Uint8Array) => {
   let i = 0;
   while (i < b.length - 1 && b[i] === 0) i++;
@@ -140,67 +139,4 @@ export async function generateEd25519(comment = ""): Promise<{ privateKey: strin
   const body = concat(utf8("openssh-key-v1\0"), sshString("none"), sshString("none"), sshString(new Uint8Array(0)), u32(1), sshString(publicBlob), sshString(priv));
   seed.fill(0);
   return { privateKey: wrapPem(body), publicKey: publicKeyLine({ type: "ssh-ed25519", publicBlob, comment: "" }), fingerprint: await fingerprint(publicBlob) };
-}
-
-// ---------- WebCrypto import for signing (SSH agent) ----------
-const ED25519_PKCS8_PREFIX = new Uint8Array([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20]);
-
-function big(b: Uint8Array): bigint {
-  let v = 0n;
-  for (const x of b) v = (v << 8n) | BigInt(x);
-  return v;
-}
-function bytesOf(v: bigint): Uint8Array {
-  const hex = v.toString(16);
-  const h = hex.length % 2 ? "0" + hex : hex;
-  return Uint8Array.from(h.match(/../g)!.map((x) => parseInt(x, 16)));
-}
-
-export async function importForSigning(k: SshKey): Promise<{ alg: any; key: CryptoKey }> {
-  if (k.ed25519Seed) {
-    const key = await crypto.subtle.importKey("pkcs8", concat(ED25519_PKCS8_PREFIX, k.ed25519Seed), { name: "Ed25519" } as any, false, ["sign"]);
-    return { alg: { name: "Ed25519" }, key };
-  }
-  if (k.ecdsa) {
-    const n = k.ecdsa.curve === "P-256" ? 32 : k.ecdsa.curve === "P-384" ? 48 : 66;
-    const Q = k.ecdsa.Q;
-    const jwk: JsonWebKey = { kty: "EC", crv: k.ecdsa.curve, x: b64u(Q.subarray(1, 1 + n)), y: b64u(Q.subarray(1 + n)), d: b64u(k.ecdsa.d), ext: false };
-    const key = await crypto.subtle.importKey("jwk", jwk, { name: "ECDSA", namedCurve: k.ecdsa.curve }, false, ["sign"]);
-    return { alg: { name: "ECDSA", hash: k.ecdsa.curve === "P-256" ? "SHA-256" : k.ecdsa.curve === "P-384" ? "SHA-384" : "SHA-512" }, key };
-  }
-  if (k.rsa) {
-    const d = big(k.rsa.d), p = big(k.rsa.p), q = big(k.rsa.q);
-    const jwk = (hash: string): JsonWebKey => ({
-      kty: "RSA", n: b64u(unpad(k.rsa!.n)), e: b64u(unpad(k.rsa!.e)), d: b64u(unpad(k.rsa!.d)), p: b64u(unpad(k.rsa!.p)), q: b64u(unpad(k.rsa!.q)),
-      dp: b64u(bytesOf(d % (p - 1n))), dq: b64u(bytesOf(d % (q - 1n))), qi: b64u(unpad(k.rsa!.iqmp)), alg: hash, ext: false,
-    });
-    return { alg: { name: "RSASSA-PKCS1-v1_5", jwk }, key: null as any };
-  }
-  throw new Error("unsupported key");
-}
-
-/** SSH agent sign: returns the ssh "signature" blob (string algo ‖ string sig). flags: 2 = rsa-sha2-256, 4 = rsa-sha2-512. */
-export async function sshSign(k: SshKey, data: Uint8Array, flags = 0): Promise<Uint8Array> {
-  if (k.ed25519Seed) {
-    const { key } = await importForSigning(k);
-    const sig = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" } as any, key, new Uint8Array(data)));
-    return concat(sshString("ssh-ed25519"), sshString(sig));
-  }
-  if (k.ecdsa) {
-    const { alg, key } = await importForSigning(k);
-    const sig = new Uint8Array(await crypto.subtle.sign(alg, key, new Uint8Array(data)));
-    const half = sig.length / 2;
-    return concat(sshString(k.type), sshString(concat(mpint(sig.subarray(0, half)), mpint(sig.subarray(half)))));
-  }
-  if (k.rsa) {
-    const algo = flags & 4 ? "rsa-sha2-512" : flags & 2 ? "rsa-sha2-256" : "ssh-rsa";
-    const hash = algo === "rsa-sha2-512" ? "SHA-512" : algo === "rsa-sha2-256" ? "SHA-256" : "SHA-1";
-    const { alg } = await importForSigning(k);
-    const jwk = alg.jwk(hash === "SHA-1" ? "RS1" : hash === "SHA-256" ? "RS256" : "RS512");
-    delete (jwk as any).alg;
-    const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash }, false, ["sign"]);
-    const sig = new Uint8Array(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new Uint8Array(data)));
-    return concat(sshString(algo), sshString(sig));
-  }
-  throw new Error("unsupported key");
 }

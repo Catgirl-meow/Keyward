@@ -3,7 +3,7 @@
 //   const page = await kw.openPopup()
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 
 export type Target = "chromium" | "firefox";
@@ -34,7 +34,7 @@ export async function launch(target: Target, opts: { headless?: boolean; slowMo?
   const headless = opts.headless ?? process.env.KW_HEADFUL !== "1";
   // Reusing a profile simulates a browser restart (storage.local survives, storage.session doesn't).
   const profile = opts.profile ?? mkdtempSync(join(tmpdir(), `kw-${target}-`));
-  const ext = join(root, "dist", target);
+  const ext = join(process.env.KW_DIST ? resolve(process.env.KW_DIST) : join(root, "dist"), target);
   let browser: Browser;
   let base: string;
 

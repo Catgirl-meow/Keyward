@@ -102,7 +102,8 @@ import type { AfFillResult, AfMessage, CsMessage, FieldReply, FillPurpose, FillV
     ov: null as Overlay | null,
     field: null as Fillable | null,
     purpose: null as Purpose,
-    selected: -1,
+    /** a row is highlighted in the menu (Enter then picks it instead of reaching the page) */
+    selected: false,
     /** rows the menu page can select (reported with its size) */
     rows: 0,
     open: false,
@@ -167,7 +168,7 @@ import type { AfFillResult, AfMessage, CsMessage, FieldReply, FillPurpose, FillV
     const a = analysisFor(menu.field);
     // The background records which frame and purpose the menu belongs to before the page asks.
     const token = newToken();
-    await send({ kw: "cs", t: "menu", purpose: menu.purpose, scope: a.type, token });
+    await send({ kw: "cs", t: "menu", purpose: menu.purpose, scope: a.type, token, webauthn: webauthnField(menu.field) });
     if (!menu.open || !menu.ov) return;
     menu.height = 0;
     menu.ov.frame("menu.html", token, onMenuMessage);
@@ -175,7 +176,7 @@ import type { AfFillResult, AfMessage, CsMessage, FieldReply, FillPurpose, FillV
   }
 
   function closeMenu(all = false) {
-    menu.selected = -1;
+    menu.selected = false;
     menu.rows = 0;
     menu.open = false;
     menu.ov?.closeFrame();
@@ -194,9 +195,9 @@ import type { AfFillResult, AfMessage, CsMessage, FieldReply, FillPurpose, FillV
     } else if (m?.t === "size") {
       menu.height = Math.max(0, Math.min(Number(m.h) || 0, 420));
       menu.rows = Math.max(0, Number(m.n) || 0);
-      if (menu.selected >= menu.rows) menu.selected = menu.rows - 1;
+      if (!menu.rows) menu.selected = false;
       schedule();
-    } else if (m?.t === "sel") menu.selected = Number(m.i);
+    } else if (m?.t === "sel") menu.selected = Number(m.i) >= 0;
     else if (m?.t === "close") {
       closeMenu();
       (menu.field as HTMLElement | null)?.focus({ preventScroll: true });
@@ -214,17 +215,17 @@ import type { AfFillResult, AfMessage, CsMessage, FieldReply, FillPurpose, FillV
         }
         return;
       }
+      // The menu page owns the selection: it applies the keys, in order, to the list it is
+      // showing (which may have changed a moment ago: a filter, a warning), never a stale index.
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        const n = menu.rows;
-        if (!n) return;
-        const s = menu.selected;
-        menu.selected = e.key === "ArrowDown" ? (s + 1) % n : s <= 0 ? n - 1 : s - 1;
-        toMenu({ t: "sel", i: menu.selected });
-      } else if (e.key === "Enter" && menu.selected >= 0 && menu.ov?.port) {
+        if (!menu.rows) return;
+        menu.selected = true;
+        toMenu({ t: "key", k: e.key === "ArrowDown" ? "down" : "up" });
+      } else if (e.key === "Enter" && menu.selected && menu.ov?.port) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        toMenu({ t: "pick", i: menu.selected });
+        toMenu({ t: "key", k: "enter" });
       } else if (e.key === "Escape") {
         e.preventDefault();
         closeMenu();
@@ -246,6 +247,8 @@ import type { AfFillResult, AfMessage, CsMessage, FieldReply, FillPurpose, FillV
   );
 
   // ---------------------------------------------------------------- focus
+  /** The page offers passkeys in this field's autofill (autocomplete="username webauthn"). */
+  const webauthnField = (el: Element) => /(^|\s)webauthn(\s|$)/i.test(el.getAttribute("autocomplete") ?? "");
   let focusSeq = 0;
   let filling = false;
   async function onFocus(el: Element | null) {
@@ -255,7 +258,7 @@ import type { AfFillResult, AfMessage, CsMessage, FieldReply, FillPurpose, FillV
     const a = analysisFor(el);
     const purpose = purposeOf(kindInScope(el, a));
     if (!purpose) return closeMenu(true);
-    const r = await send<FieldReply>({ kw: "cs", t: "field", purpose, empty: !el.value, ...info(a) });
+    const r = await send<FieldReply>({ kw: "cs", t: "field", purpose, empty: !el.value, webauthn: webauthnField(el), ...info(a) });
     if (seq !== focusSeq || deepActive() !== el || !r) return;
     if (r.icon) showFor(el, purpose, r.open && !el.value);
     else closeMenu(true);
@@ -424,6 +427,17 @@ import type { AfFillResult, AfMessage, CsMessage, FieldReply, FillPurpose, FillV
       case "menuClose":
         closeMenu(true);
         return;
+      case "menuTrusted":
+        respond(!!menu.open && !!menu.ov?.trusted());
+        return;
+      case "refocus": {
+        const el = deepActive();
+        if (!menu.open && el && webauthnField(el)) {
+          if (el === menu.field) closeMenu(true);
+          void onFocus(el);
+        }
+        return;
+      }
       case "watch":
         watch(m.ms);
         return;

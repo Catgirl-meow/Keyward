@@ -9,7 +9,6 @@
       "Bash(scripts/dev-server.sh:*)",
       "Bash(sh scripts/dev-server.sh:*)",
       "Bash(podman:*)",
-      "Bash(cargo:*)",
       "Bash(/opt/helium/helium --headless:*)",
       "Bash(helium --headless:*)",
       "Bash(librewolf-bin --headless:*)"

@@ -18,7 +18,9 @@ import { overlayChannel, overlayToken } from "../../data/overlay-token.ts";
 
 applyCachedTheme();
 type Ctx = RpcRes<"menu.ctx">;
-type Entry = { kind: "item"; item: Ctx["items"][number] } | { kind: "generate"; value: string } | { kind: "open" } | { kind: "unlock" };
+type Item = Ctx["items"][number];
+type Passkey = Ctx["passkeys"][number];
+type Entry = { kind: "passkey"; pk: Passkey } | { kind: "item"; item: Item } | { kind: "generate"; value: string } | { kind: "open" } | { kind: "unlock" } | { kind: "force"; item: Item } | { kind: "back" };
 
 const TYPE_ICON: Record<number, string> = { 1: I.key, 3: I.card, 4: I.badge };
 
@@ -39,10 +41,14 @@ function Menu() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [server, setServer] = useState<string | null>(null);
   const [sel, setSel] = useState(-1);
+  /** `sel` for the port's handler, current between renders */
+  const selRef = useRef(-1);
   const [q, setQ] = useState("");
   const [gen, setGen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The background wants a yes first (an https item on an http page): its reason, and the item.
+  const [ask, setAsk] = useState<{ item: Item; text: string; at: number } | null>(null);
   const port = useRef<MessagePort | null>(null);
   const root = useRef<HTMLDivElement>(null);
 
@@ -53,15 +59,24 @@ function Menu() {
     // The channel first: the first render with data reports its size through it.
     if (!port.current) {
       const { port: pt } = await overlayChannel;
-      // The content script owns the keyboard selection (the field keeps focus), so a fast
-      // ArrowDown + Enter never races a round trip: it sends the index to show or to pick.
+      // The field keeps focus, so the content script forwards the arrow keys and Enter. They
+      // arrive in order on this port and apply to the rows shown here, so a fast ArrowDown +
+      // Enter neither waits for a round trip nor picks by an index from an older list.
       pt.onmessage = (e) => {
         const m = e.data;
-        if (m?.t === "sel") setSel(Number(m.i));
-        else if (m?.t === "pick") {
-          const en = entriesRef.current[Number(m.i)];
-          if (en) void pickRef.current(en, false);
-        } else if (m?.t === "filter") setQ(String(m.q ?? ""));
+        if (m?.t === "key") {
+          const n = entriesRef.current.length;
+          const s = selRef.current;
+          if (m.k === "enter") {
+            const en = entriesRef.current[s];
+            if (en) void pickRef.current(en, false);
+          } else if (n) select(m.k === "down" ? (s + 1) % n : s <= 0 ? n - 1 : s - 1);
+        } else if (m?.t === "filter") {
+          // Other rows now: nothing stays selected, so Enter can't pick one the user didn't see.
+          setQ(String(m.q ?? ""));
+          setAsk(null);
+          select(-1);
+        }
       };
       port.current = pt;
       pt.postMessage({ t: "ready" });
@@ -73,6 +88,7 @@ function Menu() {
     setSettings(s);
     setServer(a.list.find((x) => x.id === a.active)?.server ?? null);
     setCtx(c);
+    select(-1); // fresh rows (a sync or unlock may have changed them)
   }
 
   useEffect(() => {
@@ -85,7 +101,18 @@ function Menu() {
 
   const qq = q.trim().toLowerCase();
   const items = (ctx?.items ?? []).filter((i) => !qq || i.name.toLowerCase().includes(qq) || i.sub.toLowerCase().includes(qq));
-  const entries: Entry[] = ctx?.locked ? [{ kind: "unlock" }] : [...items.map((item) => ({ kind: "item" as const, item })), ...(gen ? [{ kind: "generate" as const, value: gen }] : []), { kind: "open" }];
+  // The page waits for a passkey from this field: Keyward's come first.
+  const passkeys = (ctx?.passkeys ?? []).filter((p) => !qq || [p.userName, p.displayName, p.itemName].some((x) => x?.toLowerCase().includes(qq)));
+  const entries: Entry[] = ctx?.locked
+    ? [{ kind: "unlock" }]
+    : ask
+      ? [{ kind: "force", item: ask.item }, { kind: "back" }]
+      : [
+          ...passkeys.map((pk) => ({ kind: "passkey" as const, pk })),
+          ...items.map((item) => ({ kind: "item" as const, item })),
+          ...(gen ? [{ kind: "generate" as const, value: gen }] : []),
+          { kind: "open" },
+        ];
 
   const entriesRef = useRef<Entry[]>([]);
   entriesRef.current = entries;
@@ -97,14 +124,20 @@ function Menu() {
   });
 
   const select = (i: number) => {
+    selRef.current = i;
     setSel(i);
     port.current?.postMessage({ t: "sel", i });
   };
 
   async function pick(e: Entry, pointer: boolean) {
     if (busy) return;
-    if (pointer && (performance.now() - shownAt < 300 || !reallyVisible)) return;
+    // A click right after the menu (or its warning) appears isn't aimed at what's there now.
+    if (pointer && (performance.now() - Math.max(shownAt, ask?.at ?? 0) < 300 || !reallyVisible)) return;
     setError(null);
+    if (e.kind === "back") {
+      setAsk(null);
+      return select(-1);
+    }
     if (e.kind === "open" || e.kind === "unlock") {
       try {
         await chrome.action.openPopup();
@@ -116,9 +149,21 @@ function Menu() {
     setBusy(true);
     try {
       const token = await overlayToken;
-      const r = await rpc("menu.pick", e.kind === "generate" ? { token, generated: e.value } : { token, itemId: e.item.id });
+      if (e.kind === "passkey") {
+        // Signed in (or, for a protected item, the passkey dialog asks for the master password):
+        // the background closes the menu.
+        const r = await rpc("menu.passkey", { token, itemId: e.pk.itemId, credentialId: e.pk.credentialId });
+        if (r.error) setError(r.error);
+        return;
+      }
+      const r = await rpc("menu.pick", e.kind === "generate" ? { token, generated: e.value } : { token, itemId: e.item.id, force: e.kind === "force" });
       if (r.reprompt) await rpc("ui.openPopup").catch(() => {});
-      else if (!r.filled) setError(r.error ?? "Couldn't fill this page");
+      else if (r.confirm && e.kind === "item") {
+        // Nothing selected, so a second Enter can't accept the warning by accident.
+        setAsk({ item: e.item, text: r.confirm, at: performance.now() });
+        select(-1);
+      } else if (!r.filled) setError(r.error ?? "Couldn't fill this page");
+      else setAsk(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -134,7 +179,7 @@ function Menu() {
 
   if (!ctx) return <div ref={root} class="kwm" />;
   const icon = (host: string | null) => (host && server && settings?.showFavicons ? `${server.replace(/\/+$/, "")}/icons/${encodeURIComponent(host)}/icon.png` : null);
-  const empty = !ctx.locked && !items.length;
+  const empty = !ctx.locked && !items.length && !passkeys.length;
   const label =
     ctx.purpose === "otp" ? "Fill a verification code" : ctx.purpose === "card" ? "Cards" : ctx.purpose === "identity" ? "Identities" : ctx.host ? `Logins for ${ctx.host}` : "Logins";
 
@@ -145,7 +190,8 @@ function Menu() {
         <span>{ctx.locked ? "Keyward is locked" : label}</span>
         {busy && <Spinner size={14} />}
       </div>
-      {empty && <div class="kwm-empty">{qq ? `Nothing matches “${q}”` : ctx.purpose === "newPassword" ? "No saved logins here" : "No saved logins for this site"}</div>}
+      {ask && <div class="kwm-ask" role="alert"><Icon d={I.warning} size={18} /><span>{ask.text}</span></div>}
+      {empty && !ask && <div class="kwm-empty">{qq ? `Nothing matches “${q}”` : ctx.purpose === "newPassword" ? "No saved logins here" : "No saved logins for this site"}</div>}
       <div class="kwm-list">
         {entries.map((e, i) => {
           const common = {
@@ -155,6 +201,17 @@ function Menu() {
             onMouseEnter: () => select(i),
             onClick: (ev: MouseEvent) => ev.isTrusted && void pick(e, true),
           };
+          if (e.kind === "passkey")
+            return (
+              <div {...common}>
+                <div class="kwm-ico"><Icon d={I.passkey} size={20} /></div>
+                <div class="text">
+                  <div class="title">{e.pk.userName || e.pk.displayName || e.pk.itemName}</div>
+                  <div class="sub">Passkey · {e.pk.itemName}</div>
+                </div>
+                {e.pk.reprompt && <Icon d={I.lock} size={18} />}
+              </div>
+            );
           if (e.kind === "item")
             return (
               <div {...common}>
@@ -175,6 +232,23 @@ function Menu() {
                   <div class="title">Use a generated password</div>
                   <div class="sub mono">{e.value}</div>
                 </div>
+              </div>
+            );
+          if (e.kind === "force")
+            return (
+              <div {...common}>
+                <div class="kwm-ico"><Icon d={I.keyboard} size={20} /></div>
+                <div class="text">
+                  <div class="title">Fill anyway</div>
+                  <div class="sub">{e.item.name}</div>
+                </div>
+              </div>
+            );
+          if (e.kind === "back")
+            return (
+              <div {...common} class={`${common.class} kwm-foot`}>
+                <div class="kwm-ico"><Icon d={I.close} size={18} /></div>
+                <div class="text"><div class="title">Cancel</div></div>
               </div>
             );
           if (e.kind === "unlock")

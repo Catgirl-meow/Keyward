@@ -35,8 +35,8 @@ export interface SubmitData {
 /** content → background */
 export type CsMessage =
   | { kw: "cs"; t: "focus"; type: string; ac: string }
-  | ({ kw: "cs"; t: "field"; purpose: Purpose; empty: boolean } & ScopeInfo)
-  | { kw: "cs"; t: "menu"; purpose: Purpose; scope: ScopeType; token: string }
+  | ({ kw: "cs"; t: "field"; purpose: Purpose; empty: boolean; webauthn?: boolean } & ScopeInfo)
+  | { kw: "cs"; t: "menu"; purpose: Purpose; scope: ScopeType; token: string; webauthn?: boolean }
   | ({ kw: "cs"; t: "step" } & ScopeInfo)
   | { kw: "cs"; t: "submit"; data: SubmitData }
   | { kw: "cs"; t: "submitDone" };
@@ -51,6 +51,10 @@ export type AfMessage =
   | { kw: "af"; t: "scan" }
   | { kw: "af"; t: "fill"; plan: FillPlan; via: FillVia; purpose: FillPurpose }
   | { kw: "af"; t: "menuClose" }
+  /** a passkey autofill request arrived: ask again about the focused field */
+  | { kw: "af"; t: "refocus" }
+  /** is the inline menu still ours to act on (not hidden, covered or restyled by the page)? */
+  | { kw: "af"; t: "menuTrusted" }
   | { kw: "af"; t: "watch"; ms: number }
   | { kw: "af"; t: "savebar"; token: string }
   | { kw: "af"; t: "savebarClose" };

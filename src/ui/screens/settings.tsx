@@ -84,7 +84,6 @@ export function SettingsScreen() {
         <Nav icon={I.folder} title="Folders" sub={`${aux.value.folders.length} folder${aux.value.folders.length === 1 ? "" : "s"}`} page="folders" />
         <Nav icon={I.archive} title="Archive" sub="Items kept out of the list and autofill" onClick={() => { filter.value = { archive: true }; home("vault"); }} />
         <Nav icon={I.del} title="Trash" sub="Restore or delete forever" onClick={() => { filter.value = { trash: true }; home("vault"); }} />
-        <Nav icon={I.terminal} title="SSH agent" sub={s.sshAgent.enabled ? "On" : "Off"} page="ssh" />
       </Group>
       <div style={{ height: "12px" }} />
       <Group>
@@ -115,9 +114,14 @@ const PAGES: Record<string, { title: string; C: () => any }> = {
   appearance: { title: "Appearance", C: AppearancePage },
   sync: { title: "Sync", C: SyncPage },
   folders: { title: "Folders", C: FoldersPage },
-  ssh: { title: "SSH agent", C: SshPage },
   about: { title: "About", C: AboutPage },
   "autofill-excluded": { title: "Excluded sites", C: () => <SiteList path="autofill" /> },
+  "autofill-never-save": {
+    title: "Sites never saved",
+    C: () => (
+      <SiteList path="autofill" field="neverSave" canAdd={false} intro="Keyward doesn't offer to save or update logins on these sites. Filling still works." empty="No sites. Pick “Never for this site” on the save bar to add one." />
+    ),
+  },
   "passkeys-excluded": { title: "Passkey exceptions", C: () => <SiteList path="passkeys" /> },
 };
 
@@ -276,13 +280,18 @@ function AutofillPage() {
     <>
       <Group>
         <Toggle icon={I.keyboard} title="Inline menu in fields" sub="A Keyward button in login, card and identity fields" checked={af.inlineMenu} onChange={(v) => setAf({ inlineMenu: v })} />
+        {af.inlineMenu && (
+          <Toggle icon={I.adsClick} title="Open the menu when a field is focused" sub="Otherwise click the Keyward button in the field or press ↓" checked={af.menuOnFocus} onChange={(v) => setAf({ menuOnFocus: v })} />
+        )}
         <Toggle icon={I.bolt} title="Fill on page load" sub="Only when exactly one login matches the page" checked={af.onPageLoad} onChange={(v) => setAf({ onPageLoad: v })} />
+        <Toggle icon={I.steps} title="Fill the next login step" sub="After a fill, the password page and the verification code page that follow fill themselves" checked={af.continueSteps} onChange={(v) => setAf({ continueSteps: v })} />
         <Toggle icon={I.schedule} title="Copy the TOTP code after filling" sub="When the page has no code field yet" checked={af.copyTotp} onChange={(v) => setAf({ copyTotp: v })} />
       </Group>
       <div class="section-label">Prompts</div>
       <Group>
         <Toggle icon={I.add} title="Ask to save new logins" checked={af.savePrompt} onChange={(v) => setAf({ savePrompt: v })} />
         <Toggle icon={I.refresh} title="Ask to update changed passwords" checked={af.updatePrompt} onChange={(v) => setAf({ updatePrompt: v })} />
+        <Nav icon={I.domainDisabled} title="Sites never saved" sub={af.neverSave.length ? `${af.neverSave.length} site${af.neverSave.length === 1 ? "" : "s"}` : "None"} page="autofill-never-save" />
         <Toggle icon={I.dns} title="Fill HTTP sign-in dialogs" sub="Basic authentication on routers, NAS and similar" checked={af.basicAuth} onChange={(v) => setAf({ basicAuth: v })} />
       </Group>
       <div class="section-label">Matching</div>
@@ -329,10 +338,15 @@ function PasskeysPage() {
   );
 }
 
-function SiteList({ path }: { path: "autofill" | "passkeys" }) {
-  const list = settings.value[path].excluded;
+type SiteListProps =
+  | { path: "autofill"; field?: "excluded" | "neverSave"; canAdd?: boolean; intro?: string; empty?: string }
+  | { path: "passkeys"; field?: "excluded"; canAdd?: boolean; intro?: string; empty?: string };
+
+function SiteList({ path, field = "excluded", canAdd = true, intro, empty = "No sites yet. Keyward behaves normally everywhere." }: SiteListProps) {
+  const section: Record<string, unknown> = settings.value[path];
+  const list = (section[field] as string[] | undefined) ?? [];
   const [v, setV] = useState("");
-  const save = (next: string[]) => set({ [path]: { ...settings.value[path], excluded: next } } as Partial<Settings>);
+  const save = (next: string[]) => set({ [path]: { ...settings.value[path], [field]: next } } as Partial<Settings>);
   function add(e: Event) {
     e.preventDefault();
     let host = v.trim().toLowerCase();
@@ -347,11 +361,16 @@ function SiteList({ path }: { path: "autofill" | "passkeys" }) {
   }
   return (
     <>
-      <form class="pad row" style={{ gap: "8px" }} onSubmit={add}>
-        <div class="grow"><TextField label="Site, e.g. example.com" value={v} onInput={setV} /></div>
-        <IconButton icon={I.add} label="Add site" type="submit" />
-      </form>
-      <div style={{ height: "12px" }} />
+      {intro && <div class="pad t-body-s med" style={{ marginBottom: "12px" }}>{intro}</div>}
+      {canAdd && (
+        <>
+          <form class="pad row" style={{ gap: "8px" }} onSubmit={add}>
+            <div class="grow"><TextField label="Site, e.g. example.com" value={v} onInput={setV} /></div>
+            <IconButton icon={I.add} label="Add site" type="submit" />
+          </form>
+          <div style={{ height: "12px" }} />
+        </>
+      )}
       {list.length ? (
         <Group>
           {list.map((h) => (
@@ -359,7 +378,7 @@ function SiteList({ path }: { path: "autofill" | "passkeys" }) {
           ))}
         </Group>
       ) : (
-        <div class="pad t-body-m med">No sites yet. Keyward behaves normally everywhere.</div>
+        <div class="pad t-body-m med">{empty}</div>
       )}
     </>
   );
@@ -488,21 +507,6 @@ function FoldersPage() {
       ) : (
         <div class="pad t-body-m med">No folders yet.</div>
       )}
-    </>
-  );
-}
-
-function SshPage() {
-  const s = settings.value.sshAgent;
-  return (
-    <>
-      <Group>
-        <Toggle icon={I.terminal} title="SSH agent" sub="Serve SSH keys from your vault to ssh, git and other tools. Needs the keyward-agent helper." checked={s.enabled} onChange={(v) => set({ sshAgent: { ...s, enabled: v } })} />
-        <Toggle icon={I.verified} title="Ask before each use" sub="Show a prompt every time a program wants to sign with a key" checked={s.confirmEachUse} onChange={(v) => set({ sshAgent: { ...s, confirmEachUse: v } })} />
-      </Group>
-      <div class="pad t-body-s med" style={{ marginTop: "12px" }}>
-        Private keys never leave Keyward: the helper only forwards signing requests. Set <span class="mono">SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/keyward/agent.sock</span>.
-      </div>
     </>
   );
 }

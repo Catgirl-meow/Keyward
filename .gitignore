@@ -4,4 +4,3 @@ dist/
 tests/.env.test
 tests/.artifacts/
 *.log
-native/keyward-agent/target/

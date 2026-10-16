@@ -1,11 +1,11 @@
 // P4: autofill against the fixture corpus (tests/fixtures/forms). Fills are started the way the
-// popup starts them (RPC with the page's tab id) or from the page itself (focus → inline menu →
-// keys), and checked by reading the page's fields.
+// popup starts them (RPC with the page's tab id), from the popup's own UI (popup.html?tab=<id>),
+// or from the page itself (focus → inline menu → keys), and checked by reading the page's fields.
 import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import { after, before, describe, test as nodeTest } from "node:test";
 import type { Frame, Page } from "puppeteer-core";
-import { login, waitForItems } from "./flows.ts";
+import { click, clickText, fill as setField, login, waitForItems } from "./flows.ts";
 import { launch, testEnv, type Keyward, type Target } from "./launch.ts";
 import { FX, startFixtures } from "../fixtures/server.ts";
 import { importItems, login as apiLogin, randomPassword, register, sync, totpNow, uniqueEmail, type Session } from "../lib/vw.ts";
@@ -22,6 +22,10 @@ let api: Session;
 let fixtures: Server;
 const ids: Record<string, string> = {};
 const pages: Page[] = [];
+// An https login for a site the fixtures serve over http (the popup asks before filling it).
+const SECURE = { user: "secure", pass: "Secure-Pass-6" };
+// A login with master-password re-prompt on the login site (sorts after "Login site").
+const PROTECTED = { user: "guarded@example.test", pass: "Protected-Pass-7" };
 
 function test(name: string, fn: () => Promise<void>, opts: { skip?: string | false } = {}) {
   nodeTest(name, { skip: opts.skip }, async () => {
@@ -49,8 +53,11 @@ async function call<T = any>(name: string, arg?: unknown): Promise<T> {
 
 /** Opens a tab the way a user does (tabs.create), not puppeteer's newPage()+goto: with an
  * extension that injects into about:blank, the new tab's initial blank document can commit
- * after the navigation and replace it. */
-async function open(url: string): Promise<{ page: Page; tabId: number }> {
+ * after the navigation and replace it.
+ * Late in a long LibreWolf run, the first cross-site iframe of a new tab can stay at about:blank
+ * (its request never leaves the browser; it happens with Keyward uninstalled too). A second tab
+ * loads it, so a page that doesn't finish loading gets one more try. */
+async function open(url: string, retry = true): Promise<{ page: Page; tabId: number }> {
   const want = new URL(url).href;
   const existing = new Set(kw.browser.targets());
   const created = kw.browser.waitForTarget((t) => !existing.has(t) && t.type() === "page" && t.url() === want, { timeout: 15_000 });
@@ -58,12 +65,19 @@ async function open(url: string): Promise<{ page: Page; tabId: number }> {
   const page = (await (await created).asPage()) as Page;
   pages.push(page);
   if (process.env.KW_DEBUG) page.on("console", (m) => m.text().startsWith("[kw]") && console.log(m.text()));
-  await page.waitForFunction((u) => location.href === u && document.readyState === "complete", { timeout: 15_000, polling: 50 }, want);
+  try {
+    await page.waitForFunction((u) => location.href === u && document.readyState === "complete", { timeout: retry ? 10_000 : 15_000, polling: 50 }, want);
+  } catch (e) {
+    if (retry) return open(url, false);
+    const state = await page.evaluate(() => `${location.href} (${document.readyState})`).catch(() => "?");
+    throw new Error(`${(e as Error).message}: tab ${tabId} is at ${state}`);
+  }
   return { page, tabId };
 }
 const newTab = async (url: string) => (await open(url)).page;
 
-const fillItem = (tabId: number, name: string, force?: boolean) => call<{ filled: boolean; error?: string; confirm?: string; totpCopied?: boolean }>("autofill.fill", { tabId, itemId: ids[name], force });
+const fillItem = (tabId: number, name: string, force?: boolean, verified?: boolean) =>
+  call<{ filled: boolean; error?: string; confirm?: string; totpCopied?: boolean; reprompt?: boolean }>("autofill.fill", { tabId, itemId: ids[name], force, verified });
 const val = (p: Page | Frame, sel: string) => p.$eval(sel, (e) => (e as HTMLInputElement).value);
 const waitVal = (p: Page | Frame, sel: string, want: string, timeout = 10_000) =>
   p.waitForFunction((s, w) => (document.querySelector(s) as HTMLInputElement | null)?.value === w, { timeout, polling: 50 }, sel, want);
@@ -97,6 +111,21 @@ async function menuReady(page: Page, tabId: number, timeout = 8000): Promise<Fra
 }
 const overlayShown = (page: Page) => page.evaluate(() => [...document.documentElement.children].some((e) => e.localName.startsWith("kw-")));
 
+/** The popup in its own tab, filling `tabId` (popup.html?tab=…), once it has the page's matches. */
+async function popupFor(tabId: number, host: string): Promise<Page> {
+  const p = await kw.browser.newPage();
+  await p.setViewport({ width: 400, height: 600 });
+  await kw.goto(p, `${kw.base}popup.html?tab=${tabId}`);
+  pages.push(p);
+  await p.waitForFunction((h) => [...document.querySelectorAll(".section-label")].some((e) => e.textContent === `On ${h}`), { timeout: 15_000, polling: 50 }, host);
+  return p;
+}
+/** Clicks a row of the popup's "This site" list. */
+const clickSiteRow = (popup: Page, name: string) => clickText(kw, popup, name, ".vault-list > .group .item");
+/** Text of the open confirm dialog. */
+const dialogText = async (popup: Page) => (await popup.waitForSelector(".dialog p", { visible: true, timeout: 10_000 }))!.evaluate((e) => e.textContent ?? "");
+const settingsNow = async () => (await ext.evaluate(() => chrome.storage.local.get("settings"))).settings as any;
+
 describe(`autofill (${target})`, () => {
   before(async () => {
     fixtures = await startFixtures();
@@ -109,6 +138,8 @@ describe(`autofill (${target})`, () => {
       login1("Mailfence", FX.url("mailfence"), FX.mailfence.user, FX.mailfence.pass, FX.mailfence.totp),
       login1("Framed site", FX.url("other"), FX.other.user, FX.other.pass),
       login1("Basic site", FX.url("shop", "/basic"), FX.basic.user, FX.basic.pass),
+      login1("Secure other", "https://other.localhost", SECURE.user, SECURE.pass),
+      { ...login1("Protected login", FX.url("login"), PROTECTED.user, PROTECTED.pass), reprompt: 1 },
       emptyView(CipherType.Card, { name: "Visa", card: { cardholderName: "Kay Ward", brand: "Visa", number: "4111111111111111", expMonth: "7", expYear: "2031", code: "123" } }),
       ident,
     ]);
@@ -117,7 +148,7 @@ describe(`autofill (${target})`, () => {
     kw = await launch(target);
     ext = await kw.openPopup();
     await login(kw, ext, env.KW_SERVER, email, password);
-    await waitForItems(ext, 6, 30_000);
+    await waitForItems(ext, 8, 30_000);
   });
   after(async () => {
     await kw?.close();
@@ -197,7 +228,8 @@ describe(`autofill (${target})`, () => {
     assert.match(page.url(), /\/mailfence\/usw\?type=L&state=1$/);
     await page.waitForFunction(() => /^\d{6}$/.test((document.querySelector("input[name=totp]") as HTMLInputElement).value), { timeout: 10_000 });
     const boxes = await page.$$eval("#totp-inputs .code-input", (els) => els.map((e) => (e as HTMLInputElement).value).join(""));
-    assert.equal(boxes, await totpNow(FX.mailfence.totp), "one digit per box");
+    // Compared with the filled code, not a fresh one: the 30 s window can roll over in between.
+    assert.equal(boxes, await val(page, "input[name=totp]"), "one digit per box");
     assert.equal(await page.$eval("#submit-btn", (b) => (b as HTMLButtonElement).disabled), false, "the site's script saw the code");
     await Promise.all([page.waitForNavigation(), page.click("#submit-btn")]);
     assert.equal(await page.$eval("h1", (h) => h.textContent), "Inbox");
@@ -309,6 +341,149 @@ describe(`autofill (${target})`, () => {
     );
   });
 
+  test("popup UI: a cross-site frame asks first; Cancel leaves it empty, Fill fills it", async () => {
+    const { page, tabId } = await open(FX.url("login", "/iframe.html?src=" + encodeURIComponent(FX.url("other", "/plain.html"))));
+    const frame = page.frames().find((f) => f !== page.mainFrame() && f.url().includes("other.localhost"))!;
+    const popup = await popupFor(tabId, "login.localhost");
+    await clickSiteRow(popup, "Login site");
+    assert.match(await dialogText(popup), /saved for login\.localhost, but this form is on other\.localhost/);
+    await clickText(kw, popup, "Cancel", ".dialog button");
+    await popup.waitForSelector(".dialog", { hidden: true, timeout: 5000 });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(await val(frame, "#p"), "", "Cancel filled nothing");
+    await clickSiteRow(popup, "Login site");
+    await dialogText(popup);
+    await clickText(kw, popup, "Fill", ".dialog button");
+    await waitVal(frame, "#p", FX.login.pass);
+    assert.equal(await val(frame, "#u"), FX.login.user);
+    await popup.close().catch(() => {});
+  });
+
+  test("popup UI: an https login on an http page asks first", async () => {
+    const { page, tabId } = await open(FX.url("other", "/plain.html"));
+    const popup = await popupFor(tabId, "other.localhost");
+    await clickSiteRow(popup, "Secure other");
+    assert.match(await dialogText(popup), /other\.localhost isn't using a secure connection \(http\)/);
+    await clickText(kw, popup, "Fill", ".dialog button");
+    await waitVal(page, "#p", SECURE.pass);
+    assert.equal(await val(page, "#u"), SECURE.user);
+    await popup.close().catch(() => {});
+  });
+
+  test("re-prompt: the background fills a protected item only when the caller verified", async () => {
+    const { page, tabId } = await open(FX.url("login", "/plain.html"));
+    const r = await fillItem(tabId, "Protected login");
+    assert.deepEqual([r.filled, r.reprompt], [false, true], JSON.stringify(r));
+    await new Promise((r) => setTimeout(r, 300));
+    assert.deepEqual([await val(page, "#u"), await val(page, "#p")], ["", ""], "nothing filled without the master password");
+    assert.equal((await fillItem(tabId, "Protected login", false, true)).filled, true);
+    assert.equal(await val(page, "#p"), PROTECTED.pass);
+  });
+
+  test("popup UI: a protected item in the site list asks for the master password", async () => {
+    const { page, tabId } = await open(FX.url("login", "/plain.html"));
+    const popup = await popupFor(tabId, "login.localhost");
+    const sheet = async () => (await popup.waitForSelector(".dialog h2", { visible: true, timeout: 10_000 }))!.evaluate((e) => e.textContent ?? "");
+    const pw = 'input[aria-label="Master password"]';
+    await clickSiteRow(popup, "Protected login");
+    assert.equal(await sheet(), "Confirm it's you");
+    await clickText(kw, popup, "Cancel", ".dialog button");
+    await popup.waitForSelector(".dialog", { hidden: true, timeout: 5000 });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(await val(page, "#p"), "", "Cancel filled nothing");
+
+    await clickSiteRow(popup, "Protected login");
+    await sheet();
+    await setField(kw, popup, pw, "not-the-password");
+    await clickText(kw, popup, "Confirm", ".dialog button");
+    await popup.waitForFunction(() => /Invalid master password/.test(document.querySelector(".dialog")?.textContent ?? ""), { timeout: 30_000, polling: 100 });
+    assert.equal(await val(page, "#p"), "", "a wrong password filled nothing");
+    await setField(kw, popup, pw, password);
+    await clickText(kw, popup, "Confirm", ".dialog button");
+    await waitVal(page, "#p", PROTECTED.pass, 30_000);
+    assert.equal(await val(page, "#u"), PROTECTED.user);
+    await popup.close().catch(() => {});
+  });
+
+  test("popup UI: Fill on a protected item after unlocking it in its view", async () => {
+    const { page, tabId } = await open(FX.url("login", "/plain.html"));
+    const popup = await popupFor(tabId, "login.localhost");
+    await setField(kw, popup, 'input[aria-label="Search vault"]', "Protected login");
+    await clickText(kw, popup, "Protected login", ".vault-list .list-section .item");
+    await clickText(kw, popup, "Show item", ".item-view button");
+    assert.equal(await popup.$(".item-view .fab"), null, "no Fill before the master password");
+    await setField(kw, popup, 'input[aria-label="Master password"]', password);
+    await clickText(kw, popup, "Confirm", ".dialog button");
+    await clickText(kw, popup, "Fill", ".item-view .fab");
+    await waitVal(page, "#p", PROTECTED.pass, 30_000);
+    await popup.close().catch(() => {});
+  });
+
+  test("inline menu: an https login on an http page asks in the menu; Cancel goes back, Fill anyway fills", async () => {
+    const { page, tabId } = await open(FX.url("other", "/plain.html"));
+    await page.bringToFront();
+    await page.click("#u");
+    const f = await menuReady(page, tabId);
+    const titles = () => f!.$$eval(".kwm-row .title", (els) => els.map((e) => e.textContent ?? ""));
+    // LibreWolf can't see the menu frame: there the rows are known from the sort (favorites, then name).
+    if (f) assert.deepEqual((await titles()).slice(0, 2), ["Framed site", "Secure other"]);
+    const keys = async (...k: string[]) => {
+      for (const x of k) await page.keyboard.press(x as any);
+    };
+    /** Picks "Secure other" and waits until the menu shows the warning. */
+    const pickSecure = async () => {
+      await keys("ArrowDown", "ArrowDown", "Enter");
+      if (f) {
+        await f.waitForSelector(".kwm-ask", { timeout: 5000 });
+        assert.match(await f.$eval(".kwm-ask", (e) => e.textContent ?? ""), /other\.localhost isn't using a secure connection \(http\)/);
+        assert.deepEqual(await titles(), ["Fill anyway", "Cancel"]);
+      } else await new Promise((r) => setTimeout(r, 1000));
+      assert.equal(await val(page, "#p"), "", "nothing filled before the yes");
+    };
+    await pickSecure();
+    // The warning starts with no row selected, so a second Enter can't accept it by accident.
+    if (f) assert.equal(await f.$(".kwm-row.sel"), null);
+    await keys("ArrowDown", "ArrowDown", "Enter"); // Cancel
+    if (f) await f.waitForFunction(() => !document.querySelector(".kwm-ask") && [...document.querySelectorAll(".kwm-row .title")].some((e) => e.textContent === "Framed site"), { timeout: 5000 });
+    else await new Promise((r) => setTimeout(r, 600));
+    assert.equal(await val(page, "#p"), "");
+    await pickSecure();
+    await keys("ArrowDown", "Enter"); // Fill anyway
+    await waitVal(page, "#p", SECURE.pass);
+    assert.equal(await val(page, "#u"), SECURE.user);
+  });
+
+  /** Opens `name` from the popup's list and presses its Fill button. */
+  async function fillFromItemView(popup: Page, name: string) {
+    await setField(kw, popup, 'input[aria-label="Search vault"]', name);
+    await clickText(kw, popup, name, ".vault-list .list-section .item");
+    await clickText(kw, popup, "Fill", ".item-view .fab");
+  }
+
+  test("popup UI: Fill on a card item", async () => {
+    const { page, tabId } = await open(FX.url("shop", "/card.html"));
+    const popup = await popupFor(tabId, "shop.localhost");
+    await fillFromItemView(popup, "Visa");
+    await waitVal(page, "#cv", "123");
+    assert.deepEqual(
+      await page.evaluate(() => ["#cn", "#nm", "#em", "#ey", "#cv"].map((s) => (document.querySelector(s) as HTMLInputElement).value)),
+      ["4111111111111111", "Kay Ward", "07", "2031", "123"],
+    );
+    await popup.close().catch(() => {});
+  });
+
+  test("popup UI: Fill on an identity item", async () => {
+    const { page, tabId } = await open(FX.url("shop", "/identity.html"));
+    const popup = await popupFor(tabId, "shop.localhost");
+    await fillFromItemView(popup, "Kay at home");
+    await waitVal(page, "#em", "kay@example.test");
+    assert.deepEqual(
+      await page.evaluate(() => ["#fn", "#ln", "#a1", "#ci", "#zp", "#ph"].map((s) => (document.querySelector(s) as HTMLInputElement).value)),
+      ["Kay", "Ward", "1 Main St", "Springfield", "98101", "+1 555 0100"],
+    );
+    await popup.close().catch(() => {});
+  });
+
   test("search, newsletter and coupon fields are left alone", async () => {
     const { page, tabId } = await open(FX.url("login", "/negatives.html"));
     await page.bringToFront();
@@ -365,7 +540,7 @@ describe(`autofill (${target})`, () => {
     })();
     assert.ok(saved, "item not on the server");
     assert.equal(saved.login?.password, "Signup-Pass-5!");
-    assert.equal(saved.login?.uris[0]?.uri, "http://shop.localhost:8090");
+    assert.equal(saved.login?.uris[0]?.uri, FX.url("shop", ""));
   });
 
   test("no save prompt when the login form comes back (wrong password)", async () => {
@@ -385,5 +560,63 @@ describe(`autofill (${target})`, () => {
     const res = await page.goto(FX.url("shop", "/basic"));
     assert.equal(res?.status(), 200);
     assert.equal(await page.$eval("h1", (h) => h.textContent), "Authorized");
+  });
+
+  test("settings: menu-on-focus and next-step toggles, the never-save list", async () => {
+    const popup = await kw.openPopup();
+    pages.push(popup);
+    const sw = (title: string) => `button[role=switch][aria-label="${title}"]`;
+    const checked = (title: string) => popup.$eval(sw(title), (e) => e.getAttribute("aria-checked"));
+    const waitSetting = (fn: (a: any) => boolean) =>
+      (async () => {
+        for (let i = 0; i < 100; i++) {
+          if (fn((await settingsNow())?.autofill ?? {})) return;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        throw new Error(`setting not saved: ${JSON.stringify((await settingsNow())?.autofill)}`);
+      })();
+    await clickText(kw, popup, "Settings", ".navbar button");
+    await clickText(kw, popup, "Autofill", ".settings .item");
+
+    const MENU = "Open the menu when a field is focused";
+    const STEPS = "Fill the next login step";
+    await popup.waitForSelector(sw(MENU), { timeout: 10_000 }); // the page slides in
+    assert.equal(await checked(MENU), "true");
+    assert.equal(await checked(STEPS), "true");
+    await click(kw, popup, sw(STEPS));
+    await waitSetting((a) => a.continueSteps === false);
+    await click(kw, popup, sw(STEPS));
+    await waitSetting((a) => a.continueSteps === true);
+    await click(kw, popup, sw(MENU));
+    await waitSetting((a) => a.menuOnFocus === false);
+    assert.equal(await checked(MENU), "false");
+
+    // With menu-on-focus off, focusing a login field shows no menu.
+    const { page, tabId } = await open(FX.url("login", "/plain.html"));
+    await page.bringToFront();
+    await page.click("#u");
+    await new Promise((r) => setTimeout(r, 1200));
+    assert.equal(Object.keys(await ext.evaluate((id) => chrome.storage.session.get(`menu:${id}`), tabId)).length, 0, "the menu opened on focus");
+    await page.close();
+
+    // The save bar's "Never for this site" adds hosts; the list shows them and removes one.
+    await ext.evaluate(async () => {
+      const { settings } = await chrome.storage.local.get("settings");
+      (settings as any).autofill.neverSave = ["drop.example", "keep.example"];
+      await chrome.storage.local.set({ settings });
+    });
+    await clickText(kw, popup, "Sites never saved", ".settings .item");
+    await popup.waitForSelector('button[aria-label="Remove drop.example"]', { timeout: 10_000 });
+    await click(kw, popup, 'button[aria-label="Remove drop.example"]');
+    await waitSetting((a) => JSON.stringify(a.neverSave) === '["keep.example"]');
+    await popup.waitForSelector('button[aria-label="Remove drop.example"]', { hidden: true, timeout: 5000 });
+
+    // Put the defaults back for anything that runs after this.
+    await ext.evaluate(async () => {
+      const { settings } = await chrome.storage.local.get("settings");
+      Object.assign((settings as any).autofill, { neverSave: [], menuOnFocus: true, continueSteps: true });
+      await chrome.storage.local.set({ settings });
+    });
+    await popup.close().catch(() => {});
   });
 });

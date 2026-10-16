@@ -17,3 +17,5 @@ html, body { background: transparent !important; width: 100%; height: auto; over
 .kwm-foot .title { font-weight: 400; color: var(--on-surface-med); }
 .kwm-empty { padding: 4px 10px 8px; color: var(--on-surface-med); font-size: 13px; }
 .kwm-error { padding: 6px 10px; color: var(--error); font-size: 12px; }
+.kwm-ask { display: flex; gap: 8px; align-items: flex-start; padding: 2px 10px 8px; color: var(--on-surface); font-size: 13px; line-height: 18px; }
+.kwm-ask svg { flex: none; color: var(--error); margin-top: 1px; }

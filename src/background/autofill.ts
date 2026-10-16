@@ -22,6 +22,7 @@ import { copy } from "./clipboard.ts";
 import { LockedError, unlockedCtx, type UnlockedCtx } from "./ctx.ts";
 import { lock } from "./lock.ts";
 import { onSaveSubmit, onSaveSubmitDone, onSaveTab } from "./save.ts";
+import { conditionalPasskeys, useConditional } from "./passkey.ts";
 
 interface VaultIndex {
   accountId: string;
@@ -279,6 +280,8 @@ export interface FillOpts {
   target?: Target;
   purpose?: FillPurpose;
   force?: boolean;
+  /** The caller asked for the master password (items with re-prompt fill only then). */
+  verified?: boolean;
 }
 
 export interface FillOutcome {
@@ -286,6 +289,7 @@ export interface FillOutcome {
   totpCopied?: boolean;
   error?: string;
   confirm?: string;
+  reprompt?: boolean;
 }
 
 export async function fillItem(tabId: number, itemId: string, opts: FillOpts): Promise<FillOutcome> {
@@ -299,6 +303,7 @@ async function fillOnce(tabId: number, itemId: string, opts: FillOpts): Promise<
   const c = await unlockedCtx();
   const v = await loadView(c, itemId);
   if (v.deletedDate) return { filled: false, error: "This item is in the trash" };
+  if (v.reprompt === 1 && !opts.verified) return { filled: false, reprompt: true };
   const purpose = opts.purpose ?? purposeOfType(v.type);
   if (!purpose) return { filled: false, error: "This kind of item can't be filled" };
   const tab = await chrome.tabs.get(tabId);
@@ -419,6 +424,8 @@ interface MenuSession {
   purpose: Purpose;
   token: string;
   at: number;
+  /** the field takes passkeys (autocomplete "webauthn") */
+  webauthn?: boolean;
 }
 const menus = new Map<number, MenuSession>();
 
@@ -455,7 +462,9 @@ async function onField(m: Extract<CsMessage, { t: "field" }>, sender: chrome.run
   switch (m.purpose) {
     case "login": {
       const ms = (await matchesFor(t.url)).filter((x) => x.type === CipherType.Login);
-      return { icon: true, open: settings.autofill.menuOnFocus && m.empty && ms.length > 0 };
+      // A page waiting for a passkey from this field's autofill: offer Keyward's.
+      const pks = m.webauthn ? await conditionalPasskeys(tabId, t.frameId) : [];
+      return { icon: true, open: settings.autofill.menuOnFocus && m.empty && ms.length + pks.length > 0 };
     }
     case "newPassword":
       return { icon: true, open: false };
@@ -497,7 +506,7 @@ export function contentMessage(msg: any, sender: chrome.runtime.MessageSender, r
     case "menu": {
       if (typeof m.token !== "string" || m.token.length < 16) return false;
       const prev = menus.get(tabId);
-      const s: MenuSession = { tabId, target: targetOf(sender), purpose: m.purpose, token: m.token, at: Date.now() };
+      const s: MenuSession = { tabId, target: targetOf(sender), purpose: m.purpose, token: m.token, at: Date.now(), webauthn: m.webauthn === true };
       menus.set(tabId, s);
       void (async () => {
         if (prev) await session.remove(`menuTok:${prev.token}`);
@@ -538,7 +547,7 @@ export const autofillHandlers: Handlers = {
     const host = parsed && /^https?:$/.test(parsed.protocol) ? parsed.hostname : "";
     return { url: pageUrl, host, tabId: tab?.id, matches: host ? await matchesFor(pageUrl) : [] };
   },
-  "autofill.fill": ({ tabId, itemId, force }) => fillItem(tabId, itemId, { via: "popup", force }),
+  "autofill.fill": ({ tabId, itemId, force, verified }) => fillItem(tabId, itemId, { via: "popup", force, verified }),
   "menu.ctx": async ({ token }) => {
     const s = await menuSession(token);
     if (!s) throw new Error("No menu for this tab");
@@ -546,7 +555,7 @@ export const autofillHandlers: Handlers = {
     try {
       await unlockedCtx();
     } catch (e) {
-      if (e instanceof LockedError) return { ...base, locked: true, items: [] };
+      if (e instanceof LockedError) return { ...base, locked: true, items: [], passkeys: [] };
       throw e;
     }
     const v = await vaultIndex();
@@ -560,9 +569,20 @@ export const autofillHandlers: Handlers = {
     else if (s.purpose === "otp") items = (await matchesFor(s.target.url)).filter((m) => m.totp);
     else if (s.purpose === "card") items = await itemsOfType(CipherType.Card);
     else if (s.purpose === "identity") items = await itemsOfType(CipherType.Identity);
-    return { ...base, locked: false, items: items.slice(0, 50).map(withHost) };
+    const passkeys = s.purpose === "login" && s.webauthn ? await conditionalPasskeys(s.tabId, s.target.frameId) : [];
+    return { ...base, locked: false, items: items.slice(0, 50).map(withHost), passkeys };
   },
-  "menu.pick": async ({ token, itemId, generated }) => {
+  "menu.passkey": async ({ token, itemId, credentialId }, sender) => {
+    const s = await menuSession(token);
+    if (!s || s.purpose !== "login" || !s.webauthn) throw new Error("No menu for this tab");
+    // As for a fill from the menu: nothing happens through a menu the page has hidden or covered.
+    if (!(await toFrame<boolean>(s.tabId, s.target, { kw: "af", t: "menuTrusted" }).catch(() => false))) return { done: false, error: "The menu was hidden or covered; nothing was signed." };
+    const r = await useConditional(s.tabId, s.target.frameId, String(itemId), String(credentialId), sender);
+    if (!r.done && !r.dialog) return { done: false, error: "The page stopped waiting for a passkey" };
+    await toFrame(s.tabId, s.target, { kw: "af", t: "menuClose" }).catch(() => {});
+    return r;
+  },
+  "menu.pick": async ({ token, itemId, generated, force }) => {
     const s = await menuSession(token);
     if (!s) throw new Error("No menu for this tab");
     if (generated != null) {
@@ -579,7 +599,8 @@ export const autofillHandlers: Handlers = {
       return { filled: false, error: "This item doesn't match this site" };
     }
     void c;
-    return fillItem(s.tabId, sum.id, { via: "menu", target: s.target, purpose: s.purpose === "otp" ? "totp" : undefined });
+    // force: the user accepted the menu's warning (an https item on an http page).
+    return fillItem(s.tabId, sum.id, { via: "menu", target: s.target, purpose: s.purpose === "otp" ? "totp" : undefined, force: force === true });
   },
   "ui.openPopup": async () => {
     await chrome.action.openPopup().catch(() => {});

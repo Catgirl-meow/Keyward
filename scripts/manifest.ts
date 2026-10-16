@@ -1,7 +1,7 @@
 // Generates manifest.json per browser. Kept in code (not JSON files) so both targets share one source.
 export type Target = "chromium" | "firefox";
 
-// Stable extension id for Chromium (native-messaging allow-list, test fixtures). Public key only.
+// Stable extension id for Chromium (test fixtures, users' allow-lists). Public key only.
 export const CHROMIUM_KEY_FILE = "manifest/chromium-key.pub.b64";
 
 export function manifest(target: Target, version: string, chromiumKey: string | null): Record<string, any> {
@@ -31,7 +31,6 @@ export function manifest(target: Target, version: string, chromiumKey: string | 
       "clipboardRead",
       "notifications",
     ],
-    optional_permissions: ["nativeMessaging"],
     host_permissions: ["<all_urls>"],
     content_scripts: [
       {

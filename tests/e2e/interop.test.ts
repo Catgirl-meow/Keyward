@@ -12,6 +12,11 @@ import { CERT, startTlsProxy } from "../lib/tlsproxy.ts";
 import { decryptCipher, emptyView } from "../../src/core/vault/cipher.ts";
 import { CipherType, FieldType, type CipherView } from "../../src/core/vault/types.ts";
 import { generateEd25519 } from "../../src/core/ssh/keys.ts";
+import { verifyAuthenticationResponse } from "@simplewebauthn/server";
+import { assert as passkeySign, coseKeyES256, createPasskey, credentialIdBytes, publicKeyOf } from "../../src/core/passkey/authenticator.ts";
+import { authenticationJSON, clientDataJSON } from "../../src/core/passkey/client.ts";
+import { sha256 } from "../../src/core/crypto/primitives.ts";
+import { toB64Url, utf8 } from "../../src/core/util/bytes.ts";
 import { SERVER, importItems, login, randomPassword, register, sync, uniqueEmail, type Session } from "../lib/vw.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
@@ -125,6 +130,71 @@ describe("interop with the official Bitwarden CLI", { skip: !existsSync(BW) && "
     assert.equal(v.login?.uris[0]?.uri, "https://bw.example.test");
     assert.equal(v.fields[0]?.value, "v");
     assert.equal(views.find((x) => x.name === "BW note")?.notes, "ünïcödé");
+  });
+
+  test("passkeys: bw reads one Keyward made, field for field", async () => {
+    const k = await createPasskey({ rpId: "pk.example.test", rpName: "PK site", userHandle: utf8("user-7"), userName: "kay", userDisplayName: "Kay", discoverable: true });
+    await importItems(s, [
+      emptyView(CipherType.Login, {
+        name: "KW passkey",
+        login: { username: "kay", password: null, passwordRevisionDate: null, totp: null, uris: [{ uri: "https://pk.example.test", match: null }], autofillOnPageLoad: null, fido2Credentials: [k.fido2] },
+      }),
+    ]);
+    await bw(["sync"]);
+    const item = ((await bwJson(["list", "items", "--search", "KW passkey"])) as any[]).find((i) => i.name === "KW passkey");
+    const f = item?.login?.fido2Credentials?.[0];
+    assert.ok(f, `bw shows no passkey: ${JSON.stringify(item?.login)}`);
+    for (const key of ["credentialId", "keyType", "keyAlgorithm", "keyCurve", "keyValue", "rpId", "userHandle", "userName", "rpName", "userDisplayName"] as const) {
+      assert.equal(f[key], (k.fido2 as any)[key], key);
+    }
+    assert.equal(Number(f.counter), 0);
+    assert.equal(String(f.discoverable), "true");
+  });
+
+  test("passkeys: Keyward signs with one the official client stored", async () => {
+    // A passkey as Bitwarden stores it: GUID id, PKCS#8 P-256 key in base64url; the item format
+    // carries counter and discoverable as strings.
+    const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"])) as CryptoKeyPair;
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", pair.privateKey));
+    const jwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+    const credentialId = crypto.randomUUID();
+    const tpl = await bwJson(["get", "template", "item"]);
+    const loginTpl = await bwJson(["get", "template", "item.login"]);
+    await bw(["create", "item", encode({
+      ...tpl,
+      name: "BW passkey",
+      login: {
+        ...loginTpl, username: "bw-kay", password: null, uris: [{ uri: "https://bw-pk.example.test", match: null }],
+        fido2Credentials: [{
+          credentialId, keyType: "public-key", keyAlgorithm: "ECDSA", keyCurve: "P-256", keyValue: toB64Url(pkcs8),
+          rpId: "bw-pk.example.test", userHandle: toB64Url(utf8("bw-user-1")), userName: "bw-kay", counter: "0", rpName: "BW site",
+          userDisplayName: "BW Kay", discoverable: "true", creationDate: new Date().toISOString(),
+        }],
+      },
+    })]);
+    const data = await sync(s);
+    const views = await Promise.all(data.ciphers.map((c: any) => decryptCipher(c, s.ring)));
+    const f = views.find((x) => x.name === "BW passkey")?.login?.fido2Credentials[0];
+    assert.ok(f, "Keyward sees no passkey on the bw item");
+    assert.equal(f.credentialId, credentialId);
+    assert.equal(f.rpId, "bw-pk.example.test");
+    assert.equal(f.discoverable, true);
+    assert.equal(toB64Url((await publicKeyOf(f)).cose), toB64Url(coseKeyES256(Buffer.from(jwk.x!, "base64url"), Buffer.from(jwk.y!, "base64url"))));
+    // A login with it, checked by an independent verifier against the key bw stored.
+    const origin = "https://bw-pk.example.test";
+    const challenge = toB64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const cd = clientDataJSON("webauthn.get", challenge, origin);
+    const a = await passkeySign(f, await sha256(cd), true);
+    const v = await verifyAuthenticationResponse({
+      response: authenticationJSON(credentialIdBytes(f.credentialId)!, a, cd) as any,
+      expectedChallenge: challenge,
+      expectedOrigin: origin,
+      expectedRPID: "bw-pk.example.test",
+      credential: { id: toB64Url(credentialIdBytes(credentialId)!), publicKey: coseKeyES256(Buffer.from(jwk.x!, "base64url"), Buffer.from(jwk.y!, "base64url")) as any, counter: 0 },
+      requireUserVerification: true,
+    });
+    assert.equal(v.verified, true);
+    assert.equal(a.userHandle && Buffer.from(a.userHandle).toString(), "bw-user-1");
   });
 
   test("bw edits an item Keyward wrote; Keyward still reads it", async () => {

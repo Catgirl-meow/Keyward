@@ -1,0 +1,4 @@
+.kwp { display: flex; flex-direction: column; box-shadow: none; }
+.kwp-row { width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+.kwp-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.kwp form { display: flex; flex-direction: column; gap: 8px; }

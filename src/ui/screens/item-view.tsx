@@ -1,17 +1,17 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { deriveMasterKey, masterPasswordHash } from "../../core/crypto/kdf.ts";
 import { formatCode, otpCode, parseOtp } from "../../core/totp/totp.ts";
 import { CipherType, type CipherView } from "../../core/vault/types.ts";
 import { pwnedCount } from "../../core/watchtower/hibp.ts";
 import { quickStrength, STRENGTH_LABEL } from "../../core/watchtower/strength.ts";
-import { lazyArgon2 } from "../../platform/login.ts";
 import { rpc } from "../../platform/messages.ts";
 import { Badge, Banner, Button, ColoredPassword, EmptyState, Group, Icon, IconButton, Row, SecretField, Sheet, Spinner, TopBar, TotpRing, confirm, openMenu, toast } from "../components/kit.tsx";
 import * as I from "../icons/index.ts";
 import { account, aux, folderNames, items, openItem, orgNames } from "../data/app.ts";
 import { copyText } from "../data/clipboard.ts";
 import { pop, push } from "../data/nav.ts";
+import { verifyMasterPassword } from "../data/master-password.ts";
+import { markVerified, recentlyVerified } from "../data/reprompt.ts";
 import { ItemAvatar, TYPE_META } from "./vault-list.tsx";
 import { downloadAttachment } from "../data/attachments.ts";
 
@@ -41,15 +41,6 @@ export function useTotp(totp: string | null | undefined) {
   return state;
 }
 
-/** Master-password re-prompt (per item view, like the official client). */
-const verifiedAt = { t: 0 };
-export async function verifyMasterPassword(pw: string): Promise<boolean> {
-  const a = account.value;
-  if (!a) return false;
-  const mk = await deriveMasterKey(pw, a.email, a.kdf, lazyArgon2);
-  return (await masterPasswordHash(mk, pw, 2)) === a.localHash;
-}
-
 export function RepromptSheet({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
@@ -62,8 +53,8 @@ export function RepromptSheet({ onDone, onCancel }: { onDone: () => void; onCanc
         onSubmit={async (e) => {
           e.preventDefault();
           setBusy(true);
-          if (await verifyMasterPassword(pw)) {
-            verifiedAt.t = Date.now();
+          if (await verifyMasterPassword(pw, account.value)) {
+            markVerified();
             onDone();
           } else {
             setErr("Invalid master password");
@@ -178,7 +169,7 @@ function launchable(uri: string): string | null {
 }
 
 // ------------------------------------------------------------------ screen
-export function ItemView({ id, embedded, onFill }: { id: string; embedded?: boolean; onFill?: (id: string) => void }) {
+export function ItemView({ id, embedded, onFill }: { id: string; embedded?: boolean; onFill?: (id: string, verified?: boolean) => void }) {
   const [view, setView] = useState<CipherView | null | undefined>(undefined);
   const [unlocked, setUnlocked] = useState(false);
   const [prompting, setPrompting] = useState(false);
@@ -201,7 +192,7 @@ export function ItemView({ id, embedded, onFill }: { id: string; embedded?: bool
   if (view === undefined) return <div style={{ padding: "48px", display: "grid", placeItems: "center" }}><Spinner /></div>;
   if (view === null) return <EmptyState text="This item no longer exists"><Button variant="tonal" onClick={pop}>Back</Button></EmptyState>;
   const v = view;
-  const needsReprompt = v.reprompt === 1 && !unlocked && Date.now() - verifiedAt.t > 5 * 60_000;
+  const needsReprompt = v.reprompt === 1 && !unlocked && !recentlyVerified();
   const s = { id: v.id, name: v.name, type: v.type, uris: v.login?.uris.map((u) => u.uri) ?? [], fav: v.favorite, rp: v.reprompt === 1, att: v.attachments.length > 0, pk: [] };
   const l = v.login;
   const hidePw = !v.viewPassword;
@@ -430,8 +421,9 @@ export function ItemView({ id, embedded, onFill }: { id: string; embedded?: bool
       ) : (
         body
       )}
-      {onFill && v.type === CipherType.Login && !v.deletedDate && !needsReprompt && (
-        <button class="fab" onClick={() => onFill(v.id)}>
+      {onFill && FILLABLE.has(v.type) && !v.deletedDate && !needsReprompt && (
+        // Shown only once a protected item is unlocked here, so the fill counts as verified.
+        <button class="fab" onClick={() => onFill(v.id, true)}>
           <Icon d={I.keyboard} />
           Fill
         </button>
@@ -439,6 +431,9 @@ export function ItemView({ id, embedded, onFill }: { id: string; embedded?: bool
     </div>
   );
 }
+
+/** Types the popup can fill into the page (through autofill.fill, like the "This site" list). */
+const FILLABLE = new Set<CipherType>([CipherType.Login, CipherType.Card, CipherType.Identity]);
 
 export const LINKED: Record<number, string> = {
   100: "Username", 101: "Password",

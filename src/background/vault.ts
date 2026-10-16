@@ -7,6 +7,7 @@ import type { RawCipher } from "../core/vault/types.ts";
 import { broadcast, type Handlers } from "../platform/messages.ts";
 import { ApiError } from "../core/api/client.ts";
 import { unlockedCtx, type UnlockedCtx } from "./ctx.ts";
+import { vaultTurn } from "./sync.ts";
 import { decryptString } from "../core/crypto/encstring.ts";
 
 async function storeCiphers(c: UnlockedCtx, raws: RawCipher[], removed: string[] = []) {
@@ -39,7 +40,7 @@ async function refreshAux(c: UnlockedCtx) {
   broadcast({ kind: "vault", accountId: c.account.id, full: true });
 }
 
-export const vaultHandlers: Handlers = {
+const handlers: Handlers = {
   async "vault.save"({ accountId, view, collectionIds }) {
     const c = await unlockedCtx(accountId);
     const base = view.id ? await c.db.getCipher(view.id) : null;
@@ -136,3 +137,8 @@ export const vaultHandlers: Handlers = {
     await refreshAux(c);
   },
 };
+
+/** Every write waits for a running sync (and the reverse): see vaultTurn. */
+export const vaultHandlers: Handlers = Object.fromEntries(
+  Object.entries(handlers).map(([name, h]) => [name, (arg: any, sender: chrome.runtime.MessageSender) => vaultTurn(() => Promise.resolve((h as any)(arg, sender)))]),
+) as Handlers;
