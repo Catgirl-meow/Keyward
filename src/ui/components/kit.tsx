@@ -145,6 +145,24 @@ export function Switch({ checked, onChange, label }: { checked: boolean; onChang
   return <button type="button" role="switch" class="switch" aria-checked={checked} aria-label={label} onClick={(e) => { e.stopPropagation(); onChange(!checked); }} />;
 }
 
+/**
+ * Rows of chips scroll sideways; a mouse wheel only scrolls up and down. Over a chip row that
+ * can still move that way, the wheel scrolls it sideways instead (at either end the page
+ * scrolls as usual). Touchpads send sideways scrolling themselves and are left alone.
+ */
+export function chipsFollowWheel() {
+  addEventListener("wheel", (e) => {
+    const row = (e.target as Element | null)?.closest?.<HTMLElement>(".chips");
+    if (!row || e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+    const max = row.scrollWidth - row.clientWidth;
+    if (max <= 0) return;
+    const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? row.clientWidth : 1);
+    if ((dy < 0 && row.scrollLeft <= 0) || (dy > 0 && row.scrollLeft >= max - 1)) return;
+    e.preventDefault();
+    row.scrollLeft += dy;
+  }, { passive: false });
+}
+
 export function Chip({ selected, onClick, icon, children, closable }: { selected?: boolean; onClick?: () => void; icon?: string; children: ComponentChildren; closable?: boolean }) {
   return (
     <button type="button" class="chip" aria-pressed={!!selected} onClick={onClick}>
@@ -356,7 +374,19 @@ export interface MenuItem {
   header?: boolean;
 }
 const menuState = signal<{ x: number; y: number; items: MenuItem[]; align: "left" | "right" } | null>(null);
+/** The button the open menu came from, and the one whose press just closed it. */
+let menuAnchor: HTMLElement | null = null;
+let closedBy: { el: HTMLElement; at: number } | null = null;
+
 export function openMenu(anchor: HTMLElement | MouseEvent, items: MenuItem[]) {
+  // A press on the button of an open menu closes it (pointerdown, in MenuHost); the click that
+  // follows must not open it again, so the button toggles its menu.
+  if (!(anchor instanceof MouseEvent) && closedBy?.el === anchor && performance.now() - closedBy.at < 800) {
+    closedBy = null;
+    return;
+  }
+  closedBy = null;
+  menuAnchor = anchor instanceof MouseEvent ? null : anchor;
   let x: number, y: number, align: "left" | "right" = "right";
   if (anchor instanceof MouseEvent) {
     x = anchor.clientX;
@@ -394,6 +424,7 @@ export function MenuHost() {
     const close = (e: Event) => {
       if (e instanceof KeyboardEvent && e.key !== "Escape") return;
       if (e.type === "pointerdown" && ref.current?.contains(e.target as Node)) return;
+      if (e.type === "pointerdown" && menuAnchor?.contains(e.target as Node)) closedBy = { el: menuAnchor, at: performance.now() };
       closeMenu();
     };
     addEventListener("pointerdown", close, true);

@@ -8,7 +8,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { Summary } from "../../core/vault/types.ts";
 import { loadPending } from "../../platform/login.ts";
 import { rpc, type PageMatch } from "../../platform/messages.ts";
-import { ConfirmHost, EmptyState, Icon, MenuHost, Toasts, confirm, toast } from "../components/kit.tsx";
+import { ConfirmHost, EmptyState, Icon, MenuHost, Toasts, chipsFollowWheel, confirm, toast } from "../components/kit.tsx";
 import * as I from "../icons/index.ts";
 import { applyCachedTheme } from "../theme/theme.ts";
 import { account, addingAccount, boot, phase, syncNow, syncStatus, syncing } from "../data/app.ts";
@@ -284,7 +284,10 @@ function Unlocked({ mode }: { mode: Mode }) {
 
   const body = (
     <main class="content" onPointerDown={activity} onKeyDown={activity}>
-      {s.length > 1 ? <Animated k={routeKey(top, s.length)}>{routeView(top, false, popup ? fill : undefined)}</Animated> : <Animated k={`root:${tab.value}`}>{root}</Animated>}
+      {/* Screens scroll inside .scroll; the FAB sits on .content, so it stays where it is. */}
+      <div class="scroll">
+        {s.length > 1 ? <Animated k={routeKey(top, s.length)}>{routeView(top, false, popup ? fill : undefined)}</Animated> : <Animated k={`root:${tab.value}`}>{root}</Animated>}
+      </div>
       {(tab.value === "vault" || tab.value === "send") && s.length === 1 && (
         <button type="button" class="fab" onClick={(e) => {
           const at = e.currentTarget as HTMLElement;
@@ -351,8 +354,11 @@ function Overlays() {
 
 export async function mount(mode: Mode) {
   document.documentElement.dataset.mode = mode;
-  // The popup keeps its screen across closes; a full tab opened with #resume takes it over.
-  if (mode === "popup") setResumeMode("popup");
+  chipsFollowWheel();
+  // The popup keeps its screen across closes; a full tab opened with #resume takes it over. A
+  // popup opened for one tab (popup.html?tab=…: popped out into a window, or a test) doesn't
+  // close on blur, and starts afresh.
+  if (mode === "popup" && !new URLSearchParams(location.search).has("tab")) setResumeMode("popup");
   else if (location.hash === "#resume") {
     setResumeMode("handoff");
     history.replaceState(null, "", location.pathname);

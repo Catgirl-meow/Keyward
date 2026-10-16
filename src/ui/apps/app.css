@@ -7,7 +7,8 @@ html[data-mode="popup"] #app { height: 600px; }
 .layout { display: flex; height: 100%; min-height: 0; background: var(--page-bg); }
 .layout.popup { flex-direction: column; }
 .layout.tab { flex-direction: row; height: 100vh; }
-.content { position: relative; flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.content { position: relative; flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.scroll { position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 .route { min-height: 100%; }
 
 .single { flex: 1; min-width: 0; display: flex; justify-content: center; }
@@ -41,8 +42,13 @@ html[data-mode="popup"] #app { height: 600px; }
 .auth .item { background: var(--row-bg); }
 
 /* vault list */
-.vault-list { position: relative; min-height: 100%; }
-.list-head { position: sticky; top: 0; z-index: 3; background: var(--page-bg); padding-bottom: 8px; }
+/* The list fills its pane: the search and filter head stays put, and only the rows below it
+   scroll (with the scrollbar beside them, not beside the search bar). */
+.vault-list { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.list-head { flex: none; z-index: 3; background: var(--page-bg); padding: 8px 0; }
+.list-head .searchbar { margin-top: 0; }
+.site-row .fill-btn { height: 32px; padding: 0 16px; font-size: 13px; }
+.list-scroll { position: relative; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 /* windowed list: flattened rows with group corners from classes (see vault-list.tsx) */
 .vlist { display: flow-root; }
 .vblock { display: flow-root; }

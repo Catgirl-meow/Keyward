@@ -4,8 +4,9 @@ type Palettes = typeof import("./palettes.gen.ts").PALETTES;
 const mq = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null;
 const CACHE = "kw-theme-v1";
 
-export function isDark(s: Pick<Settings, "theme">): boolean {
-  return s.theme === "dark" || (s.theme === "system" && !!mq?.matches);
+/** `systemDark`: the system's mode when this page can't see it itself (a page framed in a site). */
+export function isDark(s: Pick<Settings, "theme">, systemDark?: boolean | null): boolean {
+  return s.theme === "dark" || (s.theme === "system" && (systemDark ?? !!mq?.matches));
 }
 
 // The 18 generated palettes (~19 KB) load only when the accent changes or the Appearance page
@@ -35,9 +36,9 @@ function setVars(roles: Record<string, string>) {
   for (const k in roles) st.setProperty(`--${k}`, roles[k]);
 }
 
-export function applyTheme(s: Pick<Settings, "theme" | "amoled" | "accent" | "font">): void {
+export function applyTheme(s: Pick<Settings, "theme" | "amoled" | "accent" | "font">, systemDark?: boolean | null): void {
   const root = document.documentElement;
-  const dark = isDark(s);
+  const dark = isDark(s, systemDark);
   root.dataset.theme = dark ? "dark" : "light";
   root.dataset.amoled = String(dark && s.amoled);
   root.dataset.font = s.font;
@@ -49,7 +50,7 @@ export function applyTheme(s: Pick<Settings, "theme" | "amoled" | "accent" | "fo
     try {
       localStorage.setItem(CACHE, JSON.stringify({ accent: s.accent, light: pal.light, dark: pal.dark } satisfies Cached));
     } catch {}
-    setVars(isDark(s) ? pal.dark : pal.light);
+    setVars(isDark(s, systemDark) ? pal.dark : pal.light);
   });
 }
 

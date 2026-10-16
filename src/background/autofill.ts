@@ -607,6 +607,10 @@ export const autofillHandlers: Handlers = {
     // force: the user accepted the menu's warning (an https item on an http page).
     return fillItem(s.tabId, sum.id, { via: "menu", target: s.target, purpose: s.purpose === "otp" ? "totp" : undefined, force: force === true });
   },
+  // Pages framed in a website see the site's color scheme, not the system's: LibreWolf's
+  // fingerprinting protection tells sites "light". Firefox's background is a real page and knows;
+  // Chromium's service worker has no matchMedia, and there the frames already see the system's.
+  "ui.dark": async () => (typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)").matches : null),
   "ui.openPopup": async () => {
     await chrome.action.openPopup().catch(() => {});
   },

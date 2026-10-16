@@ -7,7 +7,7 @@ import { CipherType, GPG_KIND, kindOf, type ItemKind, type Summary } from "../..
 import { rpc, type PageMatch } from "../../platform/messages.ts";
 import { Avatar, Chip, EmptyState, Icon, IconButton, Row, Skeleton, openMenu, toast, Badge, type MenuItem } from "../components/kit.tsx";
 import * as I from "../icons/index.ts";
-import { aux, folderNames, iconUrl, items, orgNames, syncNow, syncing, syncStatus, vaultLoaded } from "../data/app.ts";
+import { aux, folderNames, iconUrl, items, openItem, orgNames, syncNow, syncing, syncStatus, vaultLoaded } from "../data/app.ts";
 import { push } from "../data/nav.ts";
 import { AccountButton } from "./account-menu.tsx";
 
@@ -151,7 +151,7 @@ function useWindowedBlocks(blocks: Entry[][], container: { current: HTMLElement 
     if (!list) return;
     // Observe against the element that scrolls: with the viewport as root, the scroll container
     // clips the look-ahead margin and rows below the fold would render only once visible.
-    const scroller = list.closest<HTMLElement>(".content, .pane") ?? null;
+    const scroller = list.querySelector<HTMLElement>(".list-scroll");
     const io = new IntersectionObserver(
       (records) =>
         setVisible((prev) => {
@@ -310,6 +310,34 @@ export function SyncDot() {
   return null;
 }
 
+/** A suggested login's menu: fill, open, edit and copy. Protected items (master-password
+ * re-prompt) copy their password and code from the item view, which asks first. */
+function siteMenu(anchor: HTMLElement, m: PageMatch, onOpen: (s: Summary) => void, onFill?: (m: PageMatch) => void) {
+  const copy = async (what: "username" | "password" | "code") => {
+    const [{ copyText }, r] = await Promise.all([import("../data/clipboard.ts"), openItem(m.id)]);
+    const l = r?.view.login;
+    if (what === "username") return l?.username ? copyText(l.username, "Username", false) : toast("No username saved", { tone: "error" });
+    if (what === "password") return l?.password ? copyText(l.password, "Password") : toast("No password saved", { tone: "error" });
+    const { otpCode, parseOtp } = await import("../../core/totp/totp.ts");
+    const spec = parseOtp(l?.totp);
+    return spec ? copyText((await otpCode(spec)).code, "Verification code") : toast("No verification code saved", { tone: "error" });
+  };
+  const s = items.value.get(m.id);
+  const menu: MenuItem[] = [
+    ...(onFill ? [{ icon: I.keyboard, label: "Fill", run: () => onFill(m) }] : []),
+    ...(s ? [{ icon: I.eye, label: "View", run: () => onOpen(s) }] : []),
+    { icon: I.edit, label: "Edit", run: () => push({ name: "edit", id: m.id }) },
+    { divider: true, label: "" },
+    { icon: I.person, label: "Copy username", run: () => void copy("username") },
+    ...(m.rp ? [] : [{ icon: I.password, label: "Copy password", run: () => void copy("password") }]),
+    ...(m.rp || !m.totp ? [] : [{ icon: I.timer, label: "Copy verification code", run: () => void copy("code") }]),
+  ];
+  openMenu(anchor, menu);
+}
+
+/** Where the list was scrolled to, for coming back to it. */
+let keptScroll = 0;
+
 export function VaultList({ popup, onOpen, pageMatches, onFill }: { popup?: boolean; onOpen: (s: Summary) => void; pageMatches?: { host: string; matches: PageMatch[] } | null; onFill?: (m: PageMatch) => void }) {
   const list = results.value;
   const listRef = useRef<HTMLDivElement>(null);
@@ -334,6 +362,18 @@ export function VaultList({ popup, onOpen, pageMatches, onFill }: { popup?: bool
 
   const focusFirst = () => (listRef.current?.querySelector(".item.click") as HTMLElement | null)?.focus();
 
+  // Back from an item, the list is where it was; a new search or filter starts at the top.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = keptScroll;
+  }, []);
+  const shown = useRef<unknown>(null);
+  useEffect(() => {
+    const now = [query.value, filter.value, sort.value];
+    if (shown.current && scrollRef.current) scrollRef.current.scrollTop = keptScroll = 0;
+    shown.current = now;
+  }, [query.value, filter.value, sort.value]);
+
   return (
     <div class="vault-list" ref={listRef}
       onKeyDown={(e) => {
@@ -351,6 +391,7 @@ export function VaultList({ popup, onOpen, pageMatches, onFill }: { popup?: bool
         {syncing.value && <div class="progress-line" />}
       </div>
 
+      <div class="list-scroll" ref={scrollRef} onScroll={(e) => (keptScroll = (e.currentTarget as HTMLElement).scrollTop)}>
       {showSite && (
         <>
           <div class="section-label">{pageMatches.host ? `On ${pageMatches.host}` : "This site"}</div>
@@ -359,16 +400,17 @@ export function VaultList({ popup, onOpen, pageMatches, onFill }: { popup?: bool
               {pageMatches.matches.map((m) => (
                 <Row
                   key={m.id}
+                  class="site-row"
                   leading={<ItemAvatar s={{ id: m.id, name: m.name, type: m.type as CipherType, uris: m.uri ? [m.uri] : [], fav: m.fav, rp: m.rp, att: false, pk: [] }} />}
                   title={m.name}
                   sub={m.sub}
                   trailing={
                     <>
-                      <IconButton icon={I.openInNew} label="View item" small onClick={(e) => { e.stopPropagation(); const s = items.value.get(m.id); s && onOpen(s); }} />
-                      <span class="badge" style={{ background: "var(--primary)", color: "var(--on-primary)" }}>Fill</span>
+                      <button type="button" class="btn filled fill-btn" onClick={(e) => { e.stopPropagation(); onFill?.(m); }}>Fill</button>
+                      <IconButton icon={I.more} label="More" small onClick={(e) => { e.stopPropagation(); siteMenu(e.currentTarget as HTMLElement, m, onOpen, onFill); }} />
                     </>
                   }
-                  onClick={() => onFill?.(m)}
+                  onClick={() => { const s = items.value.get(m.id); if (s) onOpen(s); }}
                 />
               ))}
             </div>
@@ -398,6 +440,7 @@ export function VaultList({ popup, onOpen, pageMatches, onFill }: { popup?: bool
         </div>
       )}
       <div style={{ height: popup ? "88px" : "96px" }} />
+      </div>
     </div>
   );
 }

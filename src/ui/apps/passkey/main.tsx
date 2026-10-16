@@ -39,8 +39,8 @@ function Dialog() {
 
   useEffect(() => {
     void (async () => {
-      const [token, s] = await Promise.all([overlayToken, loadSettings()]);
-      applyTheme(s);
+      const [token, s, dark] = await Promise.all([overlayToken, loadSettings(), rpc("ui.dark").catch(() => null)]);
+      applyTheme(s, dark);
       port.current = (await overlayChannel).port;
       const c = await rpc("pk.ctx", { token }).catch(() => null);
       // A protected passkey picked in the inline menu: straight to the master password.

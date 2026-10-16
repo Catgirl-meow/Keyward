@@ -45,8 +45,8 @@ function Menu() {
 
   async function load() {
     const token = await overlayToken;
-    const [c, s, a] = await Promise.all([rpc("menu.ctx", { token }), loadSettings(), loadAccounts()]);
-    applyTheme(s);
+    const [c, s, a, dark] = await Promise.all([rpc("menu.ctx", { token }), loadSettings(), loadAccounts(), rpc("ui.dark").catch(() => null)]);
+    applyTheme(s, dark);
     // The channel first: the first render with data reports its size through it.
     if (!port.current) {
       const { port: pt } = await overlayChannel;

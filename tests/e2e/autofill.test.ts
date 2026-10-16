@@ -120,8 +120,20 @@ async function popupFor(tabId: number, host: string): Promise<Page> {
   await p.waitForFunction((h) => [...document.querySelectorAll(".section-label")].some((e) => e.textContent === `On ${h}`), { timeout: 15_000, polling: 50 }, host);
   return p;
 }
-/** Clicks a row of the popup's "This site" list. */
-const clickSiteRow = (popup: Page, name: string) => clickText(kw, popup, name, ".vault-list > .group .item");
+/** A button in the popup's "This site" row for `name`. */
+async function siteRowButton(popup: Page, name: string, button: string) {
+  const h = await popup.waitForFunction(
+    (n, b) => [...document.querySelectorAll(".site-row")].find((r) => r.querySelector(".title")?.textContent === n)?.querySelector(b) ?? null,
+    { timeout: 10_000 }, name, button,
+  );
+  return h.asElement() as unknown as import("puppeteer-core").ElementHandle<HTMLElement>;
+}
+/** A real press: pointerdown, then click (LibreWolf's BiDi can't send input to our pages). */
+const press = async (b: import("puppeteer-core").ElementHandle<HTMLElement>) =>
+  target === "chromium" ? b.click() : b.evaluate((e) => (e.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })), e.click()));
+/** Fills from a row of the popup's "This site" list (its Fill button). */
+const clickSiteRow = async (popup: Page, name: string) => press(await siteRowButton(popup, name, ".fill-btn"));
+const menuLabels = (popup: Page) => popup.$$eval('.menu [role="menuitem"]', (els) => els.map((e) => e.textContent?.trim()));
 /** Text of the open confirm dialog. */
 const dialogText = async (popup: Page) => (await popup.waitForSelector(".dialog p", { visible: true, timeout: 10_000 }))!.evaluate((e) => e.textContent ?? "");
 const settingsNow = async () => (await ext.evaluate(() => chrome.storage.local.get("settings"))).settings as any;
@@ -367,6 +379,29 @@ describe(`autofill (${target})`, () => {
     await clickText(kw, popup, "Fill", ".dialog button");
     await waitVal(page, "#p", SECURE.pass);
     assert.equal(await val(page, "#u"), SECURE.user);
+    await popup.close().catch(() => {});
+  });
+
+  test("popup UI: a suggested login opens on click; its menu fills, edits and copies", async () => {
+    const { tabId } = await open(FX.url("login", "/plain.html"));
+    const popup = await popupFor(tabId, "login.localhost");
+    await clickText(kw, popup, "Login site", ".site-row .title");
+    await popup.waitForSelector(".item-view", { timeout: 8000 });
+    await popup.waitForFunction((u) => document.body.innerText.includes(u), { timeout: 8000 }, FX.login.user);
+    await click(kw, popup, '.topbar button[aria-label="Back"]');
+    await press(await siteRowButton(popup, "Login site", 'button[aria-label="More"]'));
+    await popup.waitForSelector(".menu", { timeout: 5000 });
+    assert.deepEqual(await menuLabels(popup), ["Fill", "View", "Edit", "Copy username", "Copy password", "Copy verification code"]);
+    // The button closes its own menu.
+    await press(await siteRowButton(popup, "Login site", 'button[aria-label="More"]'));
+    await popup.waitForSelector(".menu", { hidden: true, timeout: 5000 });
+    // A protected item copies its secrets from the item view, after the master password.
+    await press(await siteRowButton(popup, "Protected login", 'button[aria-label="More"]'));
+    await popup.waitForSelector(".menu", { timeout: 5000 });
+    assert.deepEqual(await menuLabels(popup), ["Fill", "View", "Edit", "Copy username"]);
+    await clickText(kw, popup, "Edit", '[role="menuitem"]');
+    await popup.waitForSelector(".item-edit", { timeout: 8000 });
+    assert.equal(await popup.$eval('input[aria-label="Name"]', (e) => (e as HTMLInputElement).value), "Protected login");
     await popup.close().catch(() => {});
   });
 

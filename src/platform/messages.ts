@@ -66,6 +66,8 @@ export interface RpcMap {
   // misc
   "ui.openVault": [{ path?: string } | undefined, void];
   "ui.openPopup": [undefined, void];
+  /** Whether the system is in dark mode, where the background can tell (Firefox); else null. */
+  "ui.dark": [undefined, boolean | null];
 }
 
 export type RpcName = keyof RpcMap;

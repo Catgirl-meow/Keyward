@@ -25,8 +25,8 @@ function SaveBar() {
 
   async function load() {
     const token = await overlayToken;
-    const [c, s] = await Promise.all([rpc("save.ctx", { token }), loadSettings()]);
-    applyTheme(s);
+    const [c, s, dark] = await Promise.all([rpc("save.ctx", { token }), loadSettings(), rpc("ui.dark").catch(() => null)]);
+    applyTheme(s, dark);
     port.current ??= (await overlayChannel).port; // before the render that reports the size
     setCtx(c);
   }
