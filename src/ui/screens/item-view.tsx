@@ -343,7 +343,7 @@ export function ItemView({ id, embedded, onFill }: { id: string; embedded?: bool
               <Row
                 key={i}
                 leading={<Icon d={I.globe} />}
-                title={<span class="ellipsis" style={{ display: "block", fontWeight: 400 }}>{u.uri}</span>}
+                title={<span style={{ fontWeight: 400 }}>{u.uri}</span>}
                 sub={u.match != null ? ["Base domain", "Host", "Starts with", "Exact", "Regular expression", "Never"][u.match] : undefined}
                 below={insecure ? <Badge tone="warn" icon={I.warning}>Not secure (http)</Badge> : undefined}
                 trailing={

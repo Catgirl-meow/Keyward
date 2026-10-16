@@ -95,9 +95,9 @@ body { background: var(--page-bg); }
 .item.selected { background: var(--secondary-container); color: var(--on-secondary-container); }
 .item.kb-focus { box-shadow: inset 0 0 0 2px var(--primary); }
 .item .text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-.item .title { font: 500 16px/24px var(--font); letter-spacing: .15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.item .title.wrap { white-space: normal; word-break: break-word; }
-.item .sub { font-size: 14px; line-height: 20px; letter-spacing: .25px; color: var(--on-surface-med); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .title { font: 500 16px/24px var(--font); letter-spacing: .15px; overflow-wrap: anywhere; }
+.item .sub { font-size: 14px; line-height: 20px; letter-spacing: .25px; color: var(--on-surface-med); overflow-wrap: anywhere; }
+.item.one-line .title, .item.one-line .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
 .item .below { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .item .trail { display: flex; align-items: center; gap: 4px; flex: none; color: var(--on-surface-variant); }
 .item mark { background: var(--tertiary-container); color: var(--on-tertiary-container); border-radius: 3px; padding: 0 1px; }
@@ -112,9 +112,13 @@ body { background: var(--page-bg); }
 .avatar.fav .ring { inset: 6px; border-radius: 4px; background: transparent; }
 .avatar.fav img { border-radius: 2px; }
 .avatar .icon { width: 20px; height: 20px; }
-.avatar .badges { position: absolute; right: -6px; bottom: -4px; display: flex; gap: 1px; padding: 1px 2px; border-radius: 6px;
-  background: var(--tertiary-container); color: var(--on-tertiary-container); }
-.avatar .badges .icon { width: 12px; height: 12px; }
+/* Badges (favorite, re-prompt, attachments): small round chips on the avatar's corner, each cut
+   out of it by a ring in the row's color; more than one overlap leftwards. */
+.avatar .badges { position: absolute; right: -5px; bottom: -5px; display: flex; flex-direction: row-reverse; }
+.avatar .badges .icon { box-sizing: content-box; width: 10px; height: 10px; padding: 2px; border-radius: 50%;
+  background: var(--tertiary-container); color: var(--on-tertiary-container); box-shadow: 0 0 0 2px var(--avatar-cut, var(--row-bg)); }
+.avatar .badges .icon + .icon { margin-right: -3px; }
+.item.selected { --avatar-cut: var(--secondary-container); }
 
 /* ---------- value rows (detail) ---------- */
 .value { display: flex; align-items: center; gap: 8px; }

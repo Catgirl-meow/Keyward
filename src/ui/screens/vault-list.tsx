@@ -80,6 +80,7 @@ export function ItemRow({ hit, onOpen, selected, trailing, pos }: { hit: Hit; on
         </>
       }
       selected={selected}
+      oneLine
       onClick={() => onOpen(s)}
       id={`row-${s.id}`}
       class={pos ? `vrow ${pos}` : undefined}
@@ -401,6 +402,7 @@ export function VaultList({ popup, onOpen, pageMatches, onFill }: { popup?: bool
                 <Row
                   key={m.id}
                   class="site-row"
+                  oneLine
                   leading={<ItemAvatar s={{ id: m.id, name: m.name, type: m.type as CipherType, uris: m.uri ? [m.uri] : [], fav: m.fav, rp: m.rp, att: false, pk: [] }} />}
                   title={m.name}
                   sub={m.sub}

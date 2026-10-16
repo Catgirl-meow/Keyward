@@ -60,7 +60,6 @@ function KeyRows({ info }: { info: GpgKeyInfo }) {
         leading={<Icon d={I.fingerprint} />}
         title={<span class="mono" style={{ wordBreak: "break-all", whiteSpace: "normal" }}>{spaced(info.fingerprint)}</span>}
         sub="Fingerprint"
-        wrap
         trailing={<IconButton icon={I.copy} label="Copy fingerprint" onClick={() => void copyText(info.fingerprint, "Fingerprint", false)} />}
       />
       <Row
@@ -95,9 +94,9 @@ export function GpgKeyView({ name, gkey }: { name: string; gkey: GpgKeyFields })
     <>
       <Group label="GPG key">
         {!st && <Row leading={<Spinner size={20} />} title="Reading key…" />}
-        {st?.error && <Row leading={<Icon d={I.warning} />} title="This key could not be read" sub={st.error} wrap />}
+        {st?.error && <Row leading={<Icon d={I.warning} />} title="This key could not be read" sub={st.error} />}
         {st?.info && <KeyRows info={st.info} />}
-        {!st?.info && gkey.fingerprint && <Row leading={<Icon d={I.fingerprint} />} title={<span class="mono">{spaced(gkey.fingerprint)}</span>} sub="Fingerprint" wrap />}
+        {!st?.info && gkey.fingerprint && <Row leading={<Icon d={I.fingerprint} />} title={<span class="mono">{spaced(gkey.fingerprint)}</span>} sub="Fingerprint" />}
       </Group>
       <Group label="Key files">
         {pub && (
@@ -105,7 +104,6 @@ export function GpgKeyView({ name, gkey }: { name: string; gkey: GpgKeyFields })
             leading={<Icon d={I.key} />}
             title="Public key"
             sub="Share it so others can encrypt to you and check your signatures"
-            wrap
             trailing={
               <>
                 <IconButton icon={I.copy} label="Copy public key" onClick={() => void copyText(pub, "Public key", false)} />
@@ -142,7 +140,7 @@ export function GpgKeyEditor({ value, onChange, suggestName }: { value: GpgKeyFi
       <>
         <div class="group" style={{ margin: 0 }}>
           {!st && <Row leading={<Spinner size={20} />} title="Reading key…" />}
-          {st?.error && <Row leading={<Icon d={I.warning} />} title="This key could not be read" sub={st.error} wrap />}
+          {st?.error && <Row leading={<Icon d={I.warning} />} title="This key could not be read" sub={st.error} />}
           {st?.info && <KeyRows info={st.info} />}
         </div>
         <Button variant="tonal" icon={I.del} onClick={() => onChange(EMPTY)} style={{ alignSelf: "flex-start" }}>Remove key</Button>

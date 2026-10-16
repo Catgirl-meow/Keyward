@@ -199,19 +199,21 @@ export interface RowProps {
   onClick?: (e: MouseEvent) => void;
   onContextMenu?: (e: MouseEvent) => void;
   selected?: boolean;
-  wrap?: boolean;
+  /** Title and subtitle on one line each, cut with "…": for list rows (the vault list's
+   * windowing estimates their height). Elsewhere they wrap, so nothing is cut off. */
+  oneLine?: boolean;
   class?: string;
   href?: string;
   id?: string;
   title_?: string;
 }
 export function Row(p: RowProps) {
-  const cls = `item ${p.onClick ? "click" : ""} ${p.selected ? "selected" : ""} ${p.class ?? ""}`;
+  const cls = `item ${p.onClick ? "click" : ""} ${p.selected ? "selected" : ""} ${p.oneLine ? "one-line" : ""} ${p.class ?? ""}`;
   const inner = (
     <>
       {p.leading}
       <div class="text">
-        <div class={`title ${p.wrap ? "wrap" : ""}`}>{p.title}</div>
+        <div class="title">{p.title}</div>
         {p.sub != null && p.sub !== "" && <div class="sub">{p.sub}</div>}
         {p.below && <div class="below">{p.below}</div>}
       </div>

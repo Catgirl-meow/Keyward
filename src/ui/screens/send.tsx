@@ -63,6 +63,7 @@ function SendRow({ s }: { s: SendView }) {
   return (
     <Row
       class={`send-row ${st.open ? "" : "closed"}`}
+      oneLine
       leading={<Avatar seed={s.id} name={s.name} icon={TYPE[s.type].icon} badges={s.hasPassword ? [I.lockFill] : undefined} />}
       title={s.name}
       sub={s.type === SendType.File ? `${s.file?.fileName ?? "File"}${s.file?.sizeName ? ` · ${s.file.sizeName}` : ""}` : s.text?.hidden ? "Hidden text" : s.text?.text.split("\n")[0]}
