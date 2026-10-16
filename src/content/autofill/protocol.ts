@@ -39,7 +39,8 @@ export type CsMessage =
   | { kw: "cs"; t: "menu"; purpose: Purpose; scope: ScopeType; token: string; webauthn?: boolean }
   | ({ kw: "cs"; t: "step" } & ScopeInfo)
   | { kw: "cs"; t: "submit"; data: SubmitData }
-  | { kw: "cs"; t: "submitDone" };
+  | { kw: "cs"; t: "submitDone" }
+  | { kw: "cs"; t: "pageload" };
 
 export interface FieldReply {
   icon: boolean;

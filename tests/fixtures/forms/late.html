@@ -1,0 +1,10 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>Late form</title></head><body>
+<h1>Loading…</h1><div id="app"></div>
+<script>
+// Like Proxmox's login window (ExtJS): the form is drawn by script a while after the page loaded.
+setTimeout(() => {
+  document.querySelector("h1").textContent = "Sign in";
+  document.getElementById("app").innerHTML = '<input id="u" name="username" type="text"><input id="p" name="password" type="password"><button>Log in</button>';
+}, 1500);
+</script>
+</body></html>

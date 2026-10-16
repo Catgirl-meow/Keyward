@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><title>In-page routes</title></head><body>
+<h1>Home</h1><a id="go" href="/route.html?view=login">Log in</a><div id="app"></div>
+<script>
+// Like Monkeytype: the login page is an in-page navigation (history.pushState), not a page load.
+const app = document.getElementById("app");
+const go = document.getElementById("go");
+const show = () => {
+  if (location.search.includes("login")) app.innerHTML = '<input id="u" name="email" type="email" autocomplete="username"><input id="p" name="password" type="password" autocomplete="current-password">';
+};
+go.onclick = (e) => { e.preventDefault(); history.pushState(null, "", go.href); setTimeout(show, 200); };
+show();
+</script>
+</body></html>

@@ -364,6 +364,8 @@ async function fillOnce(tabId: number, itemId: string, opts: FillOpts): Promise<
   }
 
   const plan = await planFor(v, purpose);
+  // Nobody asked for this fill: leave whatever is already typed.
+  if (opts.via === "pageload") plan.onlyEmpty = true;
   let filled: string[] = [];
   let otpField = false;
   let error: string | undefined;
@@ -500,6 +502,9 @@ export function contentMessage(msg: any, sender: chrome.runtime.MessageSender, r
     case "focus":
       void onBootstrapFocus(sender);
       return false;
+    case "pageload":
+      void fillOnPageLoad(tabId, targetOf(sender));
+      return false;
     case "field":
       onField(m, sender).then(respond, () => respond(null));
       return true;
@@ -607,6 +612,35 @@ export const autofillHandlers: Handlers = {
   },
 };
 
+// ---------------------------------------------------------------- fill on page load
+// Opt-in (Settings → Autofill). A frame with an empty password field asks once it loads; it gets
+// a login only when exactly one matches, the item allows it, the frame is one the item may fill
+// without asking (fillOnce's own rule for explicit fills), and only into empty fields.
+const pageLoadDone = new Map<number, string>();
+export const forgetPageLoad = (tabId: number) => pageLoadDone.delete(tabId);
+
+async function fillOnPageLoad(tabId: number, t: Target): Promise<void> {
+  const s = await loadSettings();
+  if (!s.autofill.onPageLoad || !isWeb(t.url) || excluded(s, t.url)) return;
+  let c: UnlockedCtx;
+  try {
+    c = await unlockedCtx();
+  } catch {
+    return;
+  }
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab?.url || excluded(s, tab.url)) return;
+  const list = (await matchesFor(t.url)).filter((m) => m.type === CipherType.Login && !m.rp);
+  if (list.length !== 1) return;
+  const v = await loadView(c, list[0].id);
+  if (v.login?.autofillOnPageLoad === false || !(await frameAllowed(v.id, t.url, tab.url))) return;
+  // Once per frame and address: a page that redraws its form isn't filled over and over.
+  const key = `${t.frameId}|${t.url}`;
+  if (pageLoadDone.get(tabId) === key) return;
+  pageLoadDone.set(tabId, key);
+  await fillItem(tabId, v.id, { via: "pageload", target: t, purpose: "login" }).catch(() => {});
+}
+
 // ---------------------------------------------------------------- shortcuts and context menu
 async function openPopupOrVault() {
   try {
@@ -634,7 +668,10 @@ async function cycleFill(tab: chrome.tabs.Tab, type: CipherType, via: FillVia, f
     return;
   }
   const i = await cycleIndex(`cycle:${tab.id}:${type}`, list.length);
-  await fillItem(tab.id, list[i].id, { via, target: frame }).catch(() => {});
+  const r = await fillItem(tab.id, list[i].id, { via, target: frame }).catch((e) => ({ filled: false, error: (e as Error).message }) as FillOutcome);
+  // A shortcut has nowhere to ask (fill a frame of another site? master password?) or to say
+  // what went wrong: the popup has this site's logins and asks itself.
+  if (!r.filled) await openPopupOrVault();
 }
 
 export async function onAutofillCommand(cmd: string, tab?: chrome.tabs.Tab): Promise<void> {

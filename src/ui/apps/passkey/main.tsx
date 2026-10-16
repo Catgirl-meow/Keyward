@@ -15,21 +15,14 @@ import * as I from "../../icons/index.ts";
 import { applyCachedTheme, applyTheme } from "../../theme/theme.ts";
 import { verifyMasterPassword } from "../../data/master-password.ts";
 import { overlayChannel, overlayToken } from "../../data/overlay-token.ts";
+import { reallyVisible } from "../../data/visibility.ts";
 
 applyCachedTheme();
 
-// Clicks count only when the dialog is really what the user sees (Chromium's IntersectionObserver
-// v2) and has been up for a moment: a page can't trick the user into approving.
-let reallyVisible = !(__CHROMIUM__ && "IntersectionObserver" in window);
-if (!reallyVisible) {
-  try {
-    new IntersectionObserver((es) => (reallyVisible = es.some((e) => (e as any).isVisible)), { threshold: [1], trackVisibility: true, delay: 100 } as any).observe(document.documentElement);
-  } catch {
-    reallyVisible = true;
-  }
-}
+// Clicks count only once the dialog has been up for a moment and is really what the user sees
+// (data/visibility.ts): a page can't trick the user into approving.
 const shownAt = performance.now();
-const clickOk = (e?: Event) => !e || !(e instanceof MouseEvent) || e.detail === 0 || (e.isTrusted && performance.now() - shownAt >= 300 && reallyVisible);
+const clickOk = (e?: Event) => !e || !(e instanceof MouseEvent) || e.detail === 0 || (e.isTrusted && performance.now() - shownAt >= 300 && reallyVisible());
 
 type Action = { action: "use" | "save" | "fallback" | "cancel"; itemId?: string; credentialId?: string };
 

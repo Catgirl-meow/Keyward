@@ -15,6 +15,7 @@ import { Avatar, Icon, Spinner } from "../../components/kit.tsx";
 import * as I from "../../icons/index.ts";
 import { applyCachedTheme, applyTheme } from "../../theme/theme.ts";
 import { overlayChannel, overlayToken } from "../../data/overlay-token.ts";
+import { reallyVisible } from "../../data/visibility.ts";
 
 applyCachedTheme();
 type Ctx = RpcRes<"menu.ctx">;
@@ -24,16 +25,6 @@ type Entry = { kind: "passkey"; pk: Passkey } | { kind: "item"; item: Item } | {
 
 const TYPE_ICON: Record<number, string> = { 1: I.key, 3: I.card, 4: I.badge };
 
-// Visibility as the user sees it (Chromium's IntersectionObserver v2): a menu that is covered,
-// transparent or transformed by the page doesn't accept clicks.
-let reallyVisible = !(__CHROMIUM__ && "IntersectionObserver" in window);
-if (!reallyVisible) {
-  try {
-    new IntersectionObserver((es) => (reallyVisible = es.some((e) => (e as any).isVisible)), { threshold: [1], trackVisibility: true, delay: 100 } as any).observe(document.documentElement);
-  } catch {
-    reallyVisible = true;
-  }
-}
 const shownAt = performance.now();
 
 function Menu() {
@@ -132,7 +123,7 @@ function Menu() {
   async function pick(e: Entry, pointer: boolean) {
     if (busy) return;
     // A click right after the menu (or its warning) appears isn't aimed at what's there now.
-    if (pointer && (performance.now() - Math.max(shownAt, ask?.at ?? 0) < 300 || !reallyVisible)) return;
+    if (pointer && (performance.now() - Math.max(shownAt, ask?.at ?? 0) < 300 || !reallyVisible())) return;
     setError(null);
     if (e.kind === "back") {
       setAsk(null);

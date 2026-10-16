@@ -60,7 +60,17 @@ export async function launch(target: Target, opts: LaunchOptions = {}): Promise<
       env: { ...process.env, LD_LIBRARY_PATH: "/opt/helium" },
       // Only Keyward: Helium's bundled uBlock Origin reloads the first page of a fresh profile
       // a few seconds in, which lands in the middle of whatever a test is doing.
-      args: ["--no-first-run", "--no-default-browser-check", "--window-size=1280,860", `--disable-extensions-except=${ext}`],
+      args: [
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--window-size=1280,860",
+        `--disable-extensions-except=${ext}`,
+        // This laptop's screen scale (5/3). Fractional scales round frame sizes, which once made
+        // the inline menu drop every click (src/ui/data/visibility.ts). KW_SCALE=1 for whole pixels.
+        `--force-device-scale-factor=${process.env.KW_SCALE ?? "1.6666666"}`,
+        // KW_CHROME_ARGS: extra flags for a debugging run.
+        ...(process.env.KW_CHROME_ARGS?.split(" ").filter(Boolean) ?? []),
+      ],
     });
     // Loading at launch (enableExtensions: [path]) races Helium's startup and kills the pipe;
     // CDP Extensions.loadUnpacked right after launch is reliable.

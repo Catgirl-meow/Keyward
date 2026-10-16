@@ -15,7 +15,7 @@ import { deriveOrgKeys } from "../core/sync/sync.ts";
 import { webauthnTwoFactor } from "./webauthn2fa.ts";
 import { importHandlers, vaultHandlers } from "./vault.ts";
 import { sendHandlers } from "./send.ts";
-import { autofillHandlers, onAutofillCommand, onContextMenu, installContextMenus, onTabEvent, onTabUpdated, contentMessage } from "./autofill.ts";
+import { autofillHandlers, onAutofillCommand, onContextMenu, installContextMenus, onTabEvent, onTabUpdated, contentMessage, forgetPageLoad } from "./autofill.ts";
 import { saveHandlers } from "./save.ts";
 import { installBasicAuth } from "./basicauth.ts";
 import { dropPasskeyTab, passkeyHandlers, passkeyMessage, syncPasskeyScripts } from "./passkey.ts";
@@ -143,11 +143,14 @@ chrome.storage.onChanged.addListener((ch, area) => {
 });
 
 chrome.commands.onCommand.addListener((cmd, tab) => onAutofillCommand(cmd, tab));
+// For the E2E tests: a headless browser can't press extension shortcuts.
+(globalThis as any).kwCommand = async (cmd: string, tabId?: number) => onAutofillCommand(cmd, tabId == null ? undefined : await chrome.tabs.get(tabId));
 chrome.contextMenus.onClicked.addListener((info, tab) => onContextMenu(info, tab));
 chrome.tabs.onActivated.addListener(({ tabId }) => onTabEvent(tabId));
 chrome.tabs.onUpdated.addListener(onTabUpdated);
 installBasicAuth();
 chrome.tabs.onRemoved.addListener((tabId) => {
   onTabEvent(tabId, true);
+  forgetPageLoad(tabId);
   void dropPasskeyTab(tabId);
 });

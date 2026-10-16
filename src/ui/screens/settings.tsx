@@ -281,6 +281,52 @@ function PinSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
+const SHORTCUTS: Record<string, [string, string]> = {
+  _execute_action: [I.openInNew, "Open Keyward"],
+  autofill_login: [I.keyboard, "Fill the next matching login"],
+  generate_password: [I.dice, "Generate a password and copy it"],
+  autofill_card: [I.card, "Fill a card"],
+  autofill_identity: [I.person, "Fill an identity"],
+  lock_vault: [I.lock, "Lock the vault"],
+};
+
+/** The shortcuts as the browser has them: one another extension took first shows as not set. */
+function Shortcuts() {
+  const [cmds, setCmds] = useState<chrome.commands.Command[] | null>(null);
+  useEffect(() => {
+    const load = () => chrome.commands.getAll().then(setCmds, () => setCmds([]));
+    void load();
+    // Back from the browser's shortcut settings: show the new keys.
+    addEventListener("focus", load);
+    return () => removeEventListener("focus", load);
+  }, []);
+  const taken = cmds?.some((c) => !c.shortcut && (c.name === "autofill_login" || c.name === "_execute_action"));
+  return (
+    <>
+      {taken && <Banner tone="warn">A shortcut Keyward suggests is in use by another extension (the Bitwarden extension uses the same ones). Give Keyward its own below.</Banner>}
+      <Group>
+        {(cmds ?? []).filter((c) => SHORTCUTS[c.name ?? ""]).map((c) => (
+          <Row key={c.name} leading={<div class="settings-ico"><Icon d={SHORTCUTS[c.name!][0]} /></div>} title={c.shortcut || "Not set"} sub={SHORTCUTS[c.name!][1]} />
+        ))}
+        <Row
+          leading={<div class="settings-ico"><Icon d={I.tune} /></div>}
+          title="Change shortcuts"
+          sub="In the browser's extension shortcut settings"
+          trailing={<Icon d={I.openInNew} class="med" />}
+          onClick={async () => {
+            if (!__FIREFOX__) return void chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
+            try {
+              await (chrome.commands as any).openShortcutSettings();
+            } catch {
+              toast("Open about:addons, then the gear menu → Manage Extension Shortcuts");
+            }
+          }}
+        />
+      </Group>
+    </>
+  );
+}
+
 function AutofillPage() {
   const s = settings.value;
   const af = s.autofill;
@@ -317,17 +363,7 @@ function AutofillPage() {
         <Nav icon={I.block} title="Excluded sites" sub={af.excluded.length ? `${af.excluded.length} site${af.excluded.length === 1 ? "" : "s"}` : "None"} page="autofill-excluded" />
       </Group>
       <div class="section-label">Shortcuts</div>
-      <Group>
-        <Row leading={<div class="settings-ico"><Icon d={I.keyboard} /></div>} title="Ctrl+Shift+L" sub="Fill the next matching login" />
-        <Row leading={<div class="settings-ico"><Icon d={I.dice} /></div>} title="Ctrl+Shift+9" sub="Generate a password and copy it" />
-        <Row
-          leading={<div class="settings-ico"><Icon d={I.tune} /></div>}
-          title="Change shortcuts"
-          sub="In the browser's extension shortcut settings"
-          trailing={<Icon d={I.openInNew} class="med" />}
-          onClick={() => chrome.tabs.create({ url: __FIREFOX__ ? "about:addons" : "chrome://extensions/shortcuts" })}
-        />
-      </Group>
+      <Shortcuts />
     </>
   );
 }

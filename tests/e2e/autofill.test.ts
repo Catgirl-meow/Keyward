@@ -562,6 +562,45 @@ describe(`autofill (${target})`, () => {
     assert.equal(await page.$eval("h1", (h) => h.textContent), "Authorized");
   });
 
+  /** Runs an extension command (a headless browser can't press its shortcut) for `tabId`. */
+  const runCommand = (cmd: string, tabId: number) =>
+    kw.bg(target === "chromium" ? `kwCommand(${JSON.stringify(cmd)}, ${tabId})` : `browser.runtime.getBackgroundPage().then((b) => b.kwCommand(${JSON.stringify(cmd)}, ${tabId}))`);
+  const setAutofill = (patch: Record<string, unknown>) =>
+    ext.evaluate(async (p) => {
+      const { settings = {} } = (await chrome.storage.local.get("settings")) as any;
+      await chrome.storage.local.set({ settings: { ...settings, autofill: { ...settings.autofill, ...p } } });
+    }, patch);
+
+  test("Ctrl+Shift+L (autofill_login) fills this site's login", async () => {
+    const { page, tabId } = await open(FX.url("login", "/plain.html"));
+    await runCommand("autofill_login", tabId);
+    await waitVal(page, "#p", FX.login.pass);
+    assert.equal(await val(page, "#u"), FX.login.user);
+  });
+
+  test("fill on page load: off by default; on, it fills forms drawn late and after in-page navigation", async () => {
+    let { page } = await open(FX.url("login", "/plain.html"));
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.equal(await val(page, "#p"), "", "filled with the setting off");
+    await setAutofill({ onPageLoad: true });
+    try {
+      ({ page } = await open(FX.url("login", "/plain.html")));
+      await waitVal(page, "#p", FX.login.pass);
+      assert.equal(await val(page, "#u"), FX.login.user);
+      ({ page } = await open(FX.url("login", "/late.html")));
+      await waitVal(page, "#p", FX.login.pass, 8000);
+      ({ page } = await open(FX.url("login", "/route.html")));
+      await page.click("#go");
+      await waitVal(page, "#p", FX.login.pass, 8000);
+      // Two logins for the site ("Framed site", "Secure other"): nothing without asking which.
+      ({ page } = await open(FX.url("other", "/plain.html")));
+      await new Promise((r) => setTimeout(r, 2000));
+      assert.equal(await val(page, "#p"), "", "filled one of two logins");
+    } finally {
+      await setAutofill({ onPageLoad: false });
+    }
+  });
+
   test("settings: menu-on-focus and next-step toggles, the never-save list", async () => {
     const popup = await kw.openPopup();
     pages.push(popup);
