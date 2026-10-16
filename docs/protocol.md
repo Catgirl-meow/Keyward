@@ -81,6 +81,27 @@ Checked against Vaultwarden 1.37.2 and `bw` 2026.6 (tests/e2e/interop.test.ts).
 - `bw send receive --password` doesn't work: the parent `send` command takes `--password` for
   itself. Use `bw receive <url> --password …`.
 
+## Export and import
+
+Checked against `bw` 2026.6 both ways (tests/e2e/interop.test.ts).
+
+- Plain JSON: `{encrypted: false, folders: [{id, name}], items: [...]}`, items as in the API with
+  decrypted strings; passkey `counter` and `discoverable` are strings. `bw import` rejects ids
+  that aren't UUIDs.
+- Account-encrypted JSON: `{encrypted: true, encKeyValidation_DO_NOT_EDIT, folders, items}`, the
+  server's own EncStrings (item `key` included); the validation string is a random UUID encrypted
+  with the user key, so only that account can open the file.
+- Password-protected JSON: `{encrypted: true, passwordProtected: true, salt, kdfType, kdfIterations,
+  kdfMemory?, kdfParallelism?, encKeyValidation_DO_NOT_EDIT, data}`. Key = stretch(KDF(password,
+  salt)) with the salt being the base64 **text** (its UTF-8 bytes, not decoded; Argon2 hashes it
+  with SHA-256 first, as for master keys) and the account's KDF settings. `data` is the plain JSON
+  encrypted with that key.
+- CSV: `folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp`;
+  logins and notes only, several URIs comma-joined in one cell, fields as `name: value` lines.
+- Import upload: `POST /api/ciphers/import {ciphers, folders: [{id?, name}], folderRelationships:
+  [{key: cipher index, value: folder index}]}`. A folder entry with the `id` of an existing folder is
+  reused; without one the server creates it (once per request).
+
 ## Passkeys (`login.fido2Credentials`)
 
 All fields are EncStrings except `creationDate`. Keyward's AAGUID is Bitwarden's

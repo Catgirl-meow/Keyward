@@ -53,9 +53,13 @@ export function assertKdfSafe(k: Kdf): void {
 export const normalizeEmail = (e: string) => e.trim().toLowerCase();
 
 export async function deriveMasterKey(password: string, email: string, kdf: Kdf, argon2?: Argon2Fn): Promise<Uint8Array> {
+  return deriveKey(password, normalizeEmail(email), kdf, argon2);
+}
+
+/** The KDF with a salt taken as is (password-protected exports salt with a base64 string). */
+export async function deriveKey(password: string, salt: string, kdf: Kdf, argon2?: Argon2Fn): Promise<Uint8Array> {
   assertKdfSafe(kdf);
   const pw = utf8(password);
-  const salt = normalizeEmail(email);
   if (kdf.type === KdfType.PBKDF2_SHA256) return pbkdf2Sha256(pw, utf8(salt), kdf.iterations, 32);
   if (!argon2) throw new KdfError("Argon2id is not available in this context");
   return argon2({

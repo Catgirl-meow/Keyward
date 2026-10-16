@@ -13,7 +13,7 @@ import { syncAccount } from "./sync.ts";
 import { ctx, setRestoreHook } from "./ctx.ts";
 import { deriveOrgKeys } from "../core/sync/sync.ts";
 import { webauthnTwoFactor } from "./webauthn2fa.ts";
-import { vaultHandlers } from "./vault.ts";
+import { importHandlers, vaultHandlers } from "./vault.ts";
 import { sendHandlers } from "./send.ts";
 import { autofillHandlers, onAutofillCommand, onContextMenu, installContextMenus, onTabEvent, onTabUpdated, contentMessage } from "./autofill.ts";
 import { saveHandlers } from "./save.ts";
@@ -67,6 +67,7 @@ serve(
       await chrome.tabs.create({ url: chrome.runtime.getURL("vault.html" + (arg?.path ? `#${arg.path}` : "")) });
     },
     ...vaultHandlers,
+    ...importHandlers,
     ...sendHandlers,
     ...autofillHandlers,
     ...saveHandlers,

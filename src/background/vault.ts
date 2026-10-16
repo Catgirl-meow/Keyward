@@ -7,7 +7,7 @@ import type { RawCipher } from "../core/vault/types.ts";
 import { broadcast, type Handlers } from "../platform/messages.ts";
 import { ApiError } from "../core/api/client.ts";
 import { unlockedCtx, type UnlockedCtx } from "./ctx.ts";
-import { vaultTurn } from "./sync.ts";
+import { syncAfterWrite, vaultTurn } from "./sync.ts";
 import { decryptString } from "../core/crypto/encstring.ts";
 
 async function storeCiphers(c: UnlockedCtx, raws: RawCipher[], removed: string[] = []) {
@@ -135,6 +135,44 @@ const handlers: Handlers = {
     const c = await unlockedCtx(accountId);
     await c.api.delete(`/folders/${id}`);
     await refreshAux(c);
+  },
+};
+
+/** Server items per import request (Vaultwarden takes more; this keeps each request modest). */
+const IMPORT_CHUNK = 500;
+
+/**
+ * Import: encrypts the items with the user key and sends them with POST /ciphers/import, then
+ * syncs. Not a vault turn: the writes are all on the server, and the sync after them takes one.
+ * A folder whose name already exists is reused; the server creates the others.
+ */
+export const importHandlers: Handlers = {
+  async "vault.import"({ accountId, items, folders, relations }) {
+    const c = await unlockedCtx(accountId);
+    const folderIds = async () => {
+      const list = await c.api.get("/folders");
+      const all = list?.data ?? list ?? [];
+      return new Map<string, string>(await Promise.all(all.map(async (f: any) => [await decryptString(f.name, c.ring.user).catch(() => ""), f.id] as [string, string])));
+    };
+    let existing = await folderIds();
+    const folderOf = new Map(relations);
+    for (let at = 0; at < items.length; at += IMPORT_CHUNK) {
+      const chunk = items.slice(at, at + IMPORT_CHUNK);
+      const ciphers = await Promise.all(
+        chunk.map(async (v) => (await encryptCipher({ ...v, id: "", folderId: null, organizationId: null, collectionIds: [], attachments: [] }, c.ring, { useItemKey: true })).body),
+      );
+      const used = [...new Set(chunk.flatMap((_, i) => (folderOf.has(at + i) ? [folderOf.get(at + i)!] : [])))];
+      const body = {
+        ciphers,
+        folders: await Promise.all(used.map(async (j) => ({ id: existing.get(folders[j]) ?? null, name: await encryptString(folders[j], c.ring.user) }))),
+        folderRelationships: chunk.flatMap((_, i) => (folderOf.has(at + i) ? [{ key: i, value: used.indexOf(folderOf.get(at + i)!) }] : [])),
+      };
+      await c.api.post("/ciphers/import", body);
+      // Folders made by this request exist now: the next chunk must reuse them, not make more.
+      if (at + IMPORT_CHUNK < items.length && used.some((j) => !existing.has(folders[j]))) existing = await folderIds();
+    }
+    const status = await syncAfterWrite(c.account.id);
+    return { imported: items.length, synced: status.ok };
   },
 };
 

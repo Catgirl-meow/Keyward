@@ -115,10 +115,12 @@ html[data-mode="popup"] #app { height: 600px; }
 .send-link { display: flex; align-items: center; gap: 12px; margin: 0 16px 4px; padding: 12px 16px; border-radius: var(--r-lg);
   background: var(--secondary-container); color: var(--on-secondary-container); cursor: copy; }
 .send-link .mono { font-family: var(--mono); font-size: 13px; line-height: 18px; word-break: break-all; }
-.send-file { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; border-radius: var(--r-md);
+.file-pick { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; border-radius: var(--r-md);
   background: var(--row-bg); cursor: pointer; box-shadow: inset 0 0 0 1px var(--outline-variant); }
-.send-file.chosen { box-shadow: none; }
-.send-file:focus-within { outline: 2px solid var(--primary); }
+.file-pick.chosen { box-shadow: none; }
+.file-pick:focus-within { outline: 2px solid var(--primary); }
+/* banners inside a padded column line up with its fields */
+.transfer .banner, .send-edit .pad .banner, .watchtower .pad .banner { margin: 0; }
 
 /* item detail / edit bodies scroll inside .content or the detail pane */
 .item-view, .item-edit, .generator, .settings, .watchtower, .watch-list, .send-list, .send-edit { min-height: 100%; }

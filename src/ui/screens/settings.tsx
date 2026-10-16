@@ -12,6 +12,7 @@ import { accents } from "../theme/theme.ts";
 import { useSignal } from "@preact/signals";
 import { ago } from "./account-menu.tsx";
 import { filter } from "./vault-list.tsx";
+import { ExportPage, ImportPage } from "./transfer.tsx";
 
 const LOCK_OPTIONS: [string, string][] = [
   [String(LockTimeout.Immediately), "When the popup closes"],
@@ -87,6 +88,11 @@ export function SettingsScreen() {
       </Group>
       <div style={{ height: "12px" }} />
       <Group>
+        <Nav icon={I.upload} title="Import items" sub="From Bitwarden, Keyguard or a browser" page="import" />
+        <Nav icon={I.download} title="Export vault" sub="JSON or CSV, encrypted or not" page="export" />
+      </Group>
+      <div style={{ height: "12px" }} />
+      <Group>
         <Nav icon={I.info} title="About Keyward" sub={`Version ${__VERSION__}`} page="about" />
       </Group>
       <div style={{ height: "24px" }} />
@@ -115,6 +121,8 @@ const PAGES: Record<string, { title: string; C: () => any }> = {
   sync: { title: "Sync", C: SyncPage },
   folders: { title: "Folders", C: FoldersPage },
   about: { title: "About", C: AboutPage },
+  import: { title: "Import items", C: ImportPage },
+  export: { title: "Export vault", C: ExportPage },
   "autofill-excluded": { title: "Excluded sites", C: () => <SiteList path="autofill" /> },
   "autofill-never-save": {
     title: "Sites never saved",

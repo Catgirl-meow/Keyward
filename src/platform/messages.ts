@@ -41,6 +41,8 @@ export interface RpcMap {
   "vault.favorite": [{ accountId?: string; id: string; favorite: boolean }, void];
   "folder.save": [{ accountId?: string; id?: string | null; name: string }, { id: string }];
   "folder.delete": [{ accountId?: string; id: string }, void];
+  /** relations: [item index, folder index] */
+  "vault.import": [{ accountId?: string; items: CipherView[]; folders: string[]; relations: [number, number][] }, { imported: number; synced: boolean }];
   /** password: a new one, or null/absent to keep the current one */
   "send.save": [{ accountId?: string; draft: SendDraft; password?: string | null }, { id: string; accessId: string }];
   "send.delete": [{ accountId?: string; id: string }, void];

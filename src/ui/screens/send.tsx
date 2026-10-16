@@ -212,7 +212,7 @@ export function SendEdit({ id, type }: { id?: string; type?: number }) {
             <Row leading={<Icon d={I.attach} class="lead-icon" />} title={orig.file?.fileName ?? "File"} sub={orig.file?.sizeName} />
           </div>
         ) : (
-          <label class={`send-file ${file ? "chosen" : ""}`}>
+          <label class={`file-pick ${file ? "chosen" : ""}`}>
             <Icon d={file ? I.attach : I.upload} />
             <span class="grow">{file ? file.name : "Choose a file"}<span class="med">{file ? ` · ${(file.size / 1024).toFixed(file.size < 10240 ? 1 : 0)} KB` : " · up to 100 MB"}</span></span>
             <input type="file" hidden aria-label="File" onChange={(e) => {

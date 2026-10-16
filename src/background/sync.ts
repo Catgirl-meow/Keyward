@@ -30,6 +30,12 @@ export function syncAccount(accountId?: string, force = false): Promise<SyncStat
   return p;
 }
 
+/** A full sync that starts after everything already written: one in flight may predate it. */
+export async function syncAfterWrite(accountId: string): Promise<SyncStatus> {
+  await Promise.all([inflight.get(accountId), inflight.get("")].map((p) => p?.catch(() => {})));
+  return syncAccount(accountId, true);
+}
+
 async function doSync(accountId: string | undefined, force: boolean): Promise<SyncStatus> {
   const c = await unlockedCtx(accountId);
   const id = c.account.id;

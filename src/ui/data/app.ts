@@ -5,7 +5,7 @@ import type { RawSend } from "../../core/send/send.ts";
 import { VaultDB } from "../../core/store/db.ts";
 import { loadSnapshot, type AuxData } from "../../core/store/summaries.ts";
 import { decryptCipher, type KeyRing } from "../../core/vault/cipher.ts";
-import type { CipherView, RawCipher, Summary } from "../../core/vault/types.ts";
+import type { CipherView, RawCipher, RawFolder, Summary } from "../../core/vault/types.ts";
 import { loadAccounts, saveAccounts, type Account, type AccountsState } from "../../platform/accounts.ts";
 import { listen, rpc, type SyncStatus } from "../../platform/messages.ts";
 import { getCacheKey, getRing, setUnlocked } from "../../platform/session.ts";
@@ -130,6 +130,14 @@ export async function openItem(id: string): Promise<{ view: CipherView; raw: Raw
   const raw = await db.getCipher(id);
   if (!raw) return null;
   return { view: await decryptCipher(raw, ring), raw };
+}
+
+export async function rawFolders(): Promise<RawFolder[]> {
+  return (await db?.getFolders()) ?? [];
+}
+
+export async function rawCiphers(): Promise<RawCipher[]> {
+  return (await db?.getCiphers()) ?? [];
 }
 
 export async function rawSends(): Promise<RawSend[]> {

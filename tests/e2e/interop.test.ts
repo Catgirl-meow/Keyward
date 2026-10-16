@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -19,6 +19,9 @@ import { sha256 } from "../../src/core/crypto/primitives.ts";
 import { toB64Url, utf8 } from "../../src/core/util/bytes.ts";
 import { decryptSend, encryptSend, inDays, parseSendLink, sendLink, SendType, type RawSend } from "../../src/core/send/send.ts";
 import { encryptBuffer } from "../../src/core/crypto/encstring.ts";
+import { exportAccountEncrypted, exportCsv, exportJson, exportPasswordProtected } from "../../src/core/export/export.ts";
+import { parseImport } from "../../src/core/export/import.ts";
+import { PBKDF2 } from "../lib/vw.ts";
 import { SERVER, importItems, login, randomPassword, register, sync, uniqueEmail, type Session } from "../lib/vw.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
@@ -251,5 +254,79 @@ describe("interop with the official Bitwarden CLI", { skip: !existsSync(BW) && "
     const theirs = parseSendLink(made.accessUrl)!;
     assert.equal(theirs.accessId, v.accessId);
     assert.equal(toB64Url(theirs.material), v.material);
+  });
+
+  test("export: bw imports Keyward's JSON (plain, password, account) and CSV", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "kw-export-"));
+    // Ids as the server makes them: bw insists on UUIDs.
+    const folderId = crypto.randomUUID();
+    const views = (prefix: string) => {
+      const l = emptyView(CipherType.Login, {
+        id: crypto.randomUUID(), name: `${prefix} login`, notes: "n1\nn2", folderId, favorite: true,
+        login: { username: "u", password: 'p,"q"', passwordRevisionDate: null, totp: "JBSWY3DPEHPK3PXP", uris: [{ uri: "https://ex.example.test", match: null }, { uri: "https://ex2.example.test", match: 3 as any }], autofillOnPageLoad: null, fido2Credentials: [] },
+        fields: [{ type: FieldType.Hidden, name: "pin", value: "4321", linkedId: null }],
+      });
+      const c = emptyView(CipherType.Card, { id: crypto.randomUUID(), name: `${prefix} card`, card: { cardholderName: "K", brand: "Visa", number: "4111111111111111", expMonth: "1", expYear: "2030", code: "999" } });
+      const n = emptyView(CipherType.SecureNote, { id: crypto.randomUUID(), name: `${prefix} note`, notes: "Кириллица" });
+      return [l, c, n];
+    };
+    const folders = [{ id: folderId, name: "Exported folder" }];
+    writeFileSync(join(dir, "plain.json"), exportJson(views("EX"), folders));
+    writeFileSync(join(dir, "protected.json"), await exportPasswordProtected(exportJson(views("PX"), folders), "file pass", PBKDF2));
+    writeFileSync(join(dir, "items.csv"), exportCsv(views("CX"), new Map(folders.map((f) => [f.id, f.name]))));
+    await bw(["import", "bitwardenjson", join(dir, "plain.json")]);
+    await bw(["import", "bitwardenjson", join(dir, "protected.json")], "file pass\n");
+    await bw(["import", "bitwardencsv", join(dir, "items.csv")]);
+    // The account-encrypted kind: the server's own encrypted items, opened with the account key.
+    const data = await sync(s);
+    const cards = async () => ((await bwJson(["list", "items", "--search", "KW card"])) as any[]).filter((i) => i.name === "KW card" && i.card?.number === "4111111111111111").length;
+    const cardsBefore = await cards();
+    writeFileSync(join(dir, "account.json"), await exportAccountEncrypted(data.ciphers, data.folders, s.ring.user));
+    await bw(["import", "bitwardenjson", join(dir, "account.json")]);
+    await bw(["sync"]);
+    assert.equal(await cards(), cardsBefore + 1, "bw didn't import the account-encrypted export");
+    const list = (await bwJson(["list", "items"])) as any[];
+    const folderList = (await bwJson(["list", "folders"])) as any[];
+    for (const p of ["EX", "PX", "CX"]) {
+      const l = list.find((i) => i.name === `${p} login`);
+      assert.ok(l, `${p} login missing in bw`);
+      assert.deepEqual([l.login.username, l.login.password, l.login.totp, l.login.uris.map((u: any) => u.uri), l.notes, l.favorite], ["u", 'p,"q"', "JBSWY3DPEHPK3PXP", ["https://ex.example.test", "https://ex2.example.test"], "n1\nn2", true]);
+      assert.equal(l.fields?.[0]?.value, "4321");
+      assert.equal(folderList.find((f) => f.id === l.folderId)?.name, "Exported folder");
+      assert.equal(list.find((i) => i.name === `${p} note`)?.notes, "Кириллица");
+      // CSV has no card columns.
+      assert.equal(list.find((i) => i.name === `${p} card`)?.card?.code, p === "CX" ? undefined : "999");
+    }
+  });
+
+  test("import: Keyward reads bw's JSON, encrypted JSON (both kinds) and CSV", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "kw-bwexport-"));
+    const out = (n: string) => join(dir, n);
+    await bw(["export", "--format", "json", "--output", out("plain.json")]);
+    await bw(["export", "--format", "encrypted_json", "--output", out("account.json")]);
+    await bw(["export", "--format", "encrypted_json", "--password", "bw file pass", "--output", out("protected.json")]);
+    await bw(["export", "--format", "csv", "--output", out("items.csv")]);
+    const read = (n: string) => readFileSync(out(n), "utf8");
+    const results = {
+      plain: await parseImport(read("plain.json")),
+      account: await parseImport(read("account.json"), { userKey: s.ring.user }),
+      protected: await parseImport(read("protected.json"), { password: "bw file pass" }),
+      csv: await parseImport(read("items.csv")),
+    };
+    assert.deepEqual(Object.fromEntries(Object.entries(results).map(([k, r]) => [k, r.format])), {
+      plain: "bitwarden_json", account: "bitwarden_encrypted_json", protected: "bitwarden_password_json", csv: "bitwarden_csv",
+    });
+    for (const [k, r] of Object.entries(results)) {
+      const l = r.items.find((v) => v.name === "KW login");
+      assert.ok(l, `${k}: no "KW login"`);
+      assert.deepEqual([l.login?.username, l.login?.totp, l.notes], ["kw-user", "JBSWY3DPEHPK3PXP", "multi\nline"], k);
+      assert.ok(r.items.some((v) => v.name === "KW note" && v.notes === "Кириллица и emoji 🔑"), k);
+      if (k !== "csv") {
+        assert.equal(r.items.find((v) => v.name === "KW card")?.card?.number, "4111111111111111", k);
+        assert.equal(r.items.find((v) => v.name === "KW ssh")?.sshKey?.publicKey?.split(" ")[0], "ssh-ed25519", k);
+        assert.equal(r.items.length, results.plain.items.length, k);
+      }
+    }
+    await assert.rejects(parseImport(read("protected.json"), { password: "wrong" }), /Wrong password/);
   });
 });
