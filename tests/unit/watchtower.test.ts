@@ -5,6 +5,7 @@ import { quickStrength } from "../../src/core/watchtower/strength.ts";
 import { emptyView } from "../../src/core/vault/cipher.ts";
 import { CipherType, type CipherView } from "../../src/core/vault/types.ts";
 import { toB64, utf8 } from "../../src/core/util/bytes.ts";
+import { frontCode, unFrontCode } from "../../src/core/watchtower/frontcode.ts";
 
 let n = 0;
 function login(name: string, l: { user?: string; pw?: string | null; uris?: string[]; totp?: string }, more: Partial<CipherView> = {}): CipherView {
@@ -118,5 +119,20 @@ describe("watchtower", () => {
       login("Unlisted", { uris: ["https://nothing.test"] }),
     ];
     expect(inactive2fa(vs, sites).map((x) => vs.find((v) => v.id === x.id)!.name).sort()).toEqual(["No code", "Other domain"]);
+  });
+});
+
+describe("front coding (the build's zxcvbn dictionaries)", () => {
+  test("zxcvbn's own lists come back word for word", async () => {
+    const common = await import("@zxcvbn-ts/language-common");
+    const words = (await import("@zxcvbn-ts/language-en/dist/commonWords.json.mjs" as string)).default as string[];
+    for (const list of [common.dictionary["passwords-common"] as string[], words]) {
+      expect(unFrontCode(frontCode(list))).toEqual(list);
+    }
+  });
+  test("long shared prefixes and capital letters", () => {
+    const list = ["a".repeat(40), "a".repeat(41), "b"];
+    expect(unFrontCode(frontCode(list))).toEqual(list);
+    expect(() => frontCode(["Abc"])).toThrow();
   });
 });

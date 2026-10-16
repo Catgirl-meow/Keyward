@@ -5,6 +5,7 @@ import { effect, signal } from "@preact/signals";
 import type { CipherView, Summary } from "../../core/vault/types.ts";
 import { pwnedCount } from "../../core/watchtower/hibp.ts";
 import { analyze, exposed, inactive2fa, parseTwoFaDirectory, type CheckId, type Finding, type Findings, type ScoreFn } from "../../core/watchtower/report.ts";
+import { unFrontCode } from "../../core/watchtower/frontcode.ts";
 import { items, openItem, vaultOwner } from "./app.ts";
 
 export type NetCheck = "exposed" | "inactive2fa";
@@ -40,21 +41,25 @@ effect(() => {
 
 let scorer: Promise<ScoreFn> | null = null;
 /**
- * zxcvbn with common passwords, keyboard patterns and English words and first names (~900 KB,
- * loaded only here). Surnames and Wikipedia words are left out to keep the extension under 2 MB.
+ * zxcvbn with common passwords, keyboard patterns and English words and first names, loaded
+ * only here. The build gzips the dictionaries (scripts/build.ts, writeZxcvbnData) to keep the
+ * extension under 2 MB; surnames and Wikipedia words are left out for the same reason.
  */
 function zxcvbnScore(): Promise<ScoreFn> {
-  return (scorer ??= Promise.all([
-    import("@zxcvbn-ts/core"),
-    import("@zxcvbn-ts/language-common"),
-    import("@zxcvbn-ts/language-en/dist/commonWords.json.mjs"),
-    import("@zxcvbn-ts/language-en/dist/firstnames.json.mjs"),
-    import("@zxcvbn-ts/language-en/dist/wordSequences.json.mjs"),
-  ]).then(([{ ZxcvbnFactory }, common, words, names, sequences]) => {
-    const dictionary = { ...common.dictionary, "commonWords-en": words.default, "firstnames-en": names.default, ...sequences.default };
-    const z = new ZxcvbnFactory({ graphs: common.adjacencyGraphs, dictionary });
+  return (scorer ??= Promise.all([import("@zxcvbn-ts/core"), zxcvbnData()]).then(([{ ZxcvbnFactory }, { graphs, dictionary }]) => {
+    const z = new ZxcvbnFactory({ graphs, dictionary });
     return (pw: string, inputs: string[]) => z.check(pw, inputs).score;
-  }));
+  })).catch((e) => {
+    scorer = null;
+    throw e;
+  });
+}
+
+async function zxcvbnData(): Promise<{ graphs: any; dictionary: Record<string, string[]> }> {
+  const res = await fetch("/data/zxcvbn.json.gz");
+  if (!res.ok || !res.body) throw new Error("Password dictionaries are missing");
+  const data = await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).json();
+  return { graphs: data.graphs, dictionary: Object.fromEntries(Object.entries(data.lists as Record<string, string>).map(([k, v]) => [k, unFrontCode(v)])) };
 }
 
 /** Every item decrypted, trash included; an item that fails to decrypt is left out. */

@@ -57,7 +57,7 @@ export function manifest(target: Target, version: string, chromiumKey: string | 
       },
     ],
     content_security_policy: {
-      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self' data: https: http://127.0.0.1:* http://localhost:*; connect-src https: http://127.0.0.1:* http://localhost:* wss: ws://127.0.0.1:* ws://localhost:*",
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self' data: https: http://127.0.0.1:* http://localhost:*; connect-src 'self' https: http://127.0.0.1:* http://localhost:* wss: ws://127.0.0.1:* ws://localhost:*",
     },
   };
 

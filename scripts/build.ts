@@ -5,6 +5,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statS
 import { dirname, join, relative, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 import { manifest, CHROMIUM_KEY_FILE, type Target } from "./manifest.ts";
+import { frontCode } from "../src/core/watchtower/frontcode.ts";
 
 const root = new URL("..", import.meta.url).pathname;
 const args = new Map(process.argv.slice(2).map((a) => (a.includes("=") ? a.slice(2).split("=") : [a.slice(2), "1"])) as [string, string][]);
@@ -109,6 +110,7 @@ async function buildTarget(target: Target) {
   };
 
   writeStatic(target, out);
+  await writeZxcvbnData(out);
   if (watch) {
     const c1 = await esbuild.context(scriptOpts);
     const c2 = await esbuild.context(pageOpts);
@@ -136,6 +138,21 @@ function writeStatic(target: Target, out: string) {
     ["@fontsource-variable/roboto/files/roboto-cyrillic-wght-normal.woff2", "roboto-cyrillic.woff2"],
     ["@fontsource/roboto-mono/files/roboto-mono-latin-400-normal.woff2", "roboto-mono-latin.woff2"],
   ]) cpSync(join(root, "node_modules", from), join(fonts, to));
+}
+
+/**
+ * Watchtower's zxcvbn dictionaries (common passwords, English words and first names, keyboard
+ * layouts), gzipped: ~880 KB as modules, ~460 KB this way. Pages unpack it with
+ * DecompressionStream the first time Watchtower runs (src/ui/data/watchtower.ts).
+ * Lists stay front-coded as zxcvbn-ts ships them (src/core/watchtower/frontcode.ts).
+ */
+async function writeZxcvbnData(out: string) {
+  const common = await import("@zxcvbn-ts/language-common");
+  const en = (name: string) => import(`@zxcvbn-ts/language-en/dist/${name}.json.mjs`).then((m) => m.default);
+  const lists: Record<string, string[]> = { ...common.dictionary, "commonWords-en": await en("commonWords"), "firstnames-en": await en("firstnames"), ...(await en("wordSequences")) };
+  const data = { graphs: common.adjacencyGraphs, lists: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, frontCode(v)])) };
+  mkdirSync(join(out, "data"), { recursive: true });
+  writeFileSync(join(out, "data", "zxcvbn.json.gz"), gzipSync(JSON.stringify(data), { level: 9 }));
 }
 
 /** Adds <link rel="modulepreload"> for each page's static chunks, so the browser fetches them in
