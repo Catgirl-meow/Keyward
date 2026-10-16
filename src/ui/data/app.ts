@@ -23,6 +23,9 @@ export const phase = signal<Phase>("boot");
 export const items = signal<Map<string, Summary>>(new Map());
 export const aux = signal<AuxData>({ folders: [], collections: [], orgs: [] });
 export const vaultLoaded = signal(false);
+/** The account whose vault this page has open (set once its database is read, null when locked):
+ * what per-account views key on, since the active account changes before its vault is loaded. */
+export const vaultOwner = signal<string | null>(null);
 export const syncStatus = signal<SyncStatus | null>(null);
 export const syncing = signal(false);
 export const needsLogin = signal(false);
@@ -99,6 +102,7 @@ export async function refreshPhase(): Promise<void> {
     phase.value = "locked";
     items.value = new Map();
     vaultLoaded.value = false;
+    vaultOwner.value = null;
     return;
   }
   mark("ring");
@@ -123,6 +127,7 @@ export async function loadVault(): Promise<void> {
   items.value = snap.items;
   aux.value = snap.aux;
   vaultLoaded.value = true;
+  vaultOwner.value = a.id;
 }
 
 export async function openItem(id: string): Promise<{ view: CipherView; raw: RawCipher } | null> {

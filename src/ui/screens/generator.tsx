@@ -4,11 +4,11 @@ import {
   DEFAULT_PASSPHRASE, DEFAULT_PASSWORD, generatePassphrase, generatePassword, generateUsername, passphraseEntropy, passwordEntropy,
   type PassphraseOpts, type PasswordOpts, type UsernameKind,
 } from "../../core/generator/password.ts";
-import { createAlias, FORWARDERS, type ForwarderConfig, type ForwarderId } from "../../core/generator/forwarders.ts";
+import { checkServerUrl, createAlias, FORWARDERS, type ForwarderConfig, type ForwarderId } from "../../core/generator/forwarders.ts";
 import { local } from "../../platform/storage.ts";
 import { loadGeneratorPrefs, type GeneratorPrefs } from "../../platform/generator.ts";
 export { loadGeneratorPrefs, type GeneratorPrefs };
-import { Badge, Button, Chip, ColoredPassword, Group, Icon, IconButton, Row, Sheet, Switch, TextField, TopBar, toast } from "../components/kit.tsx";
+import { Badge, Button, Chip, ColoredPassword, Group, Icon, IconButton, Row, SecretField, Sheet, Switch, TextField, TopBar, toast } from "../components/kit.tsx";
 import * as I from "../icons/index.ts";
 import { account, currentRing } from "../data/app.ts";
 import { copyText } from "../data/clipboard.ts";
@@ -52,12 +52,46 @@ function Toggle({ label, checked, onChange, sub }: { label: string; checked: boo
   return <Row title={<span style={{ fontWeight: 400 }}>{label}</span>} sub={sub} trailing={<Switch checked={checked} onChange={onChange} label={label} />} onClick={() => onChange(!checked)} />;
 }
 
+/** A forwarder's API key, alias domain and (self-hosted) server URL; null removes them. */
+function ForwarderSheet({ id, cfg, onSave, onClose }: { id: ForwarderId; cfg?: ForwarderConfig; onSave: (c: ForwarderConfig | null) => void; onClose: () => void }) {
+  const f = FORWARDERS[id];
+  const [token, setToken] = useState(cfg?.token ?? "");
+  const [domain, setDomain] = useState(cfg?.domain ?? "");
+  const [baseUrl, setBaseUrl] = useState(cfg?.baseUrl ?? "");
+  const [err, setErr] = useState<string | null>(null);
+  function save() {
+    if (!token.trim()) return setErr("Enter the API key");
+    if (f.needsDomain && !domain.trim()) return setErr("Enter the domain for new aliases");
+    const url = baseUrl.trim() ? checkServerUrl(baseUrl) : undefined;
+    if (url === null) return setErr("The server URL must start with https://");
+    onSave({ token: token.trim(), domain: f.needsDomain ? domain.trim() : undefined, baseUrl: url });
+  }
+  return (
+    <Sheet onClose={onClose}>
+      <div class="section-label" style={{ paddingTop: 0 }}>{f.name}</div>
+      <div class="col" style={{ gap: "10px", margin: "0 16px" }} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT" && save()}>
+        <SecretField label="API key" value={token} onInput={setToken} hint={f.help} autoFocus mono />
+        {f.needsDomain && <TextField label="Alias domain" value={domain} onInput={setDomain} hint={id === "addy" ? "Your username subdomain or a domain you added to addy.io" : "A domain you added to Forward Email"} />}
+        {f.selfHost && <TextField label="Server URL" value={baseUrl} onInput={setBaseUrl} type="url" placeholder={f.selfHost} hint="Only if you host it yourself" />}
+        {err && <div class="field-hint error">{err}</div>}
+        <div class="row" style={{ gap: "8px", justifyContent: "flex-end" }}>
+          {cfg?.token && <Button variant="text" icon={I.del} onClick={() => onSave(null)}>Remove</Button>}
+          <span class="grow" />
+          <Button variant="text" onClick={onClose}>Cancel</Button>
+          <Button onClick={save}>Save</Button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
 export function GeneratorScreen({ onUse, site }: { onUse?: (v: string) => void; site?: string }) {
   const [p, setP] = useState<GeneratorPrefs | null>(null);
   const [value, setValue] = useState("");
   const [fwd, setFwd] = useState<Record<string, ForwarderConfig>>({});
   const [history, setHistory] = useState<{ v: string; t: number }[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<ForwarderId | null>(null);
 
   useEffect(() => {
     loadGeneratorPrefs().then(setP);
@@ -69,6 +103,8 @@ export function GeneratorScreen({ onUse, site }: { onUse?: (v: string) => void; 
       if (prefs.mode === "password") setValue(generatePassword(prefs.password));
       else if (prefs.mode === "passphrase") setValue(await generatePassphrase(prefs.passphrase));
       else if (prefs.username.kind === "forwarded") setValue("");
+      // Nothing to build on yet: the field below says what's needed, no error for it.
+      else if ((prefs.username.kind === "plus" && !prefs.username.email.includes("@")) || (prefs.username.kind === "catchall" && !prefs.username.domain.trim())) setValue("");
       else setValue(await generateUsername(prefs.username.kind, { ...prefs.username, site }));
     } catch (e) {
       setValue("");
@@ -167,18 +203,10 @@ export function GeneratorScreen({ onUse, site }: { onUse?: (v: string) => void; 
             {p.username.kind === "forwarded" && (
               <>
                 {(Object.keys(FORWARDERS) as ForwarderId[]).map((id) => (
-                  <Row key={id} title={FORWARDERS[id].name} sub={fwd[id]?.token ? "API key saved" : FORWARDERS[id].help}
+                  <Row key={id} title={FORWARDERS[id].name} sub={fwd[id]?.token ? `API key saved${fwd[id]?.baseUrl ? ` · ${new URL(fwd[id]!.baseUrl!).host}` : ""}` : FORWARDERS[id].help}
                     selected={p.username.forwarder === id}
                     onClick={() => update({ username: { ...p.username, forwarder: id } })}
-                    trailing={<IconButton icon={I.key} label="API key" onClick={async (e) => {
-                      e.stopPropagation();
-                      const token = prompt(`${FORWARDERS[id].name} API key`, fwd[id]?.token ?? "") ?? undefined;
-                      if (token == null) return;
-                      const domain = FORWARDERS[id].needsDomain ? prompt("Alias domain", fwd[id]?.domain ?? "") ?? undefined : undefined;
-                      const next = { ...fwd, [id]: { ...fwd[id], token, domain } };
-                      setFwd(next);
-                      await saveSecret("forwarders", next);
-                    }} />} />
+                    trailing={<IconButton icon={I.key} label={`${FORWARDERS[id].name} settings`} onClick={(e) => { e.stopPropagation(); setEditing(id); }} />} />
                 ))}
                 <div class="item"><Button full loading={busy} icon={I.mail} onClick={forward}>Create alias with {FORWARDERS[p.username.forwarder].name}</Button></div>
               </>
@@ -188,6 +216,21 @@ export function GeneratorScreen({ onUse, site }: { onUse?: (v: string) => void; 
       )}
       <div style={{ height: "24px" }} />
 
+      {editing && (
+        <ForwarderSheet
+          id={editing}
+          cfg={fwd[editing]}
+          onClose={() => setEditing(null)}
+          onSave={async (cfg) => {
+            const next = { ...fwd };
+            if (cfg) next[editing] = cfg;
+            else delete next[editing];
+            setFwd(next);
+            await saveSecret("forwarders", next);
+            setEditing(null);
+          }}
+        />
+      )}
       {history && (
         <Sheet onClose={() => setHistory(null)}>
           <div class="section-label" style={{ paddingTop: 0 }}>Generated passwords</div>

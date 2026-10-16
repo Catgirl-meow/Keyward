@@ -5,7 +5,7 @@ import { encryptBuffer } from "../../core/crypto/encstring.ts";
 import { decryptSend, encryptSend, sendLink, type SendDraft, type SendView } from "../../core/send/send.ts";
 import { apiFor } from "../../platform/accounts.ts";
 import { listen, rpc } from "../../platform/messages.ts";
-import { account, currentRing, phase, rawSends } from "./app.ts";
+import { account, currentRing, rawSends, vaultOwner } from "./app.ts";
 
 export const sends = signal<SendView[] | null>(null);
 export const sendsError = signal<string | null>(null);
@@ -13,7 +13,7 @@ export const sendsError = signal<string | null>(null);
 let owner: string | null = null;
 let generation = 0;
 effect(() => {
-  const id = phase.value === "unlocked" ? account.value?.id ?? null : null;
+  const id = vaultOwner.value;
   if (id === owner) return;
   owner = id;
   generation++;

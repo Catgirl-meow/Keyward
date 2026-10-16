@@ -26,7 +26,12 @@ export async function logout(accountId: string): Promise<void> {
   await chrome.alarms.clear(`lock:${accountId}`);
   await tokenStore(accountId).set(null);
   await removeAccount(accountId);
-  await session.remove([`pinSession:${accountId}`, `sync:${accountId}`]);
+  // Everything else kept per account ("<what>:<account id>"): generator history, forwarder keys,
+  // PIN, sync state and anything added later.
+  for (const area of [local, session]) {
+    const keys = Object.keys(await area.all()).filter((k) => k.endsWith(`:${accountId}`));
+    if (keys.length) await area.remove(keys);
+  }
   forgetApi(accountId);
   await VaultDB.destroy(accountId);
   broadcast({ kind: "accounts" });

@@ -251,9 +251,9 @@ export function UnlockScreen() {
   const [err, setErr] = useState<string | null>(null);
   const [relogin, setRelogin] = useState(false);
 
+  // No state reset here: the shell remounts this screen per account (key), and a reset after the
+  // first paint would drop a password typed or filled in before it ran.
   useEffect(() => {
-    setPw("");
-    setErr(null);
     pinAvailable(a.id).then((ok) => setMode(ok && !needsLogin.value ? "pin" : "password"));
   }, [a.id]);
 

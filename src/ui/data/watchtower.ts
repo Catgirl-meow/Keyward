@@ -5,7 +5,7 @@ import { effect, signal } from "@preact/signals";
 import type { CipherView, Summary } from "../../core/vault/types.ts";
 import { pwnedCount } from "../../core/watchtower/hibp.ts";
 import { analyze, exposed, inactive2fa, parseTwoFaDirectory, type CheckId, type Finding, type Findings, type ScoreFn } from "../../core/watchtower/report.ts";
-import { account, items, openItem, phase } from "./app.ts";
+import { items, openItem, vaultOwner } from "./app.ts";
 
 export type NetCheck = "exposed" | "inactive2fa";
 export type NetState = { state: "idle" } | { state: "running"; done: number; total: number } | { state: "done" } | { state: "error"; message: string };
@@ -29,7 +29,7 @@ export const TWOFA_DIRECTORY = "https://api.2fa.directory/v3/totp.json";
 let owner: string | null = null;
 let generation = 0;
 effect(() => {
-  const id = phase.value === "unlocked" ? account.value?.id ?? null : null;
+  const id = vaultOwner.value;
   if (id === owner) return;
   owner = id;
   generation++;
