@@ -1,7 +1,8 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { formatCode, otpCode, parseOtp } from "../../core/totp/totp.ts";
-import { CipherType, type CipherView } from "../../core/vault/types.ts";
+import { CipherType, GPG_KIND, type CipherView } from "../../core/vault/types.ts";
+import { isGpgFieldName, looksLikeGpgItem } from "../../core/gpg/fields.ts";
 import { pwnedCount } from "../../core/watchtower/hibp.ts";
 import { quickStrength, STRENGTH_LABEL } from "../../core/watchtower/strength.ts";
 import { rpc } from "../../platform/messages.ts";
@@ -14,6 +15,8 @@ import { verifyMasterPassword } from "../data/master-password.ts";
 import { markVerified, recentlyVerified } from "../data/reprompt.ts";
 import { ItemAvatar, TYPE_META } from "./vault-list.tsx";
 import { downloadAttachment } from "../data/attachments.ts";
+import { useGpgFields } from "../data/gpg.ts";
+import { GpgKeyView } from "./gpg.tsx";
 
 // ------------------------------------------------------------------ hooks
 export function useTotp(totp: string | null | undefined) {
@@ -188,12 +191,16 @@ export function ItemView({ id, embedded, onFill }: { id: string; embedded?: bool
       alive = false;
     };
   }, [id, sum?.rev, sum?.del, sum?.folder, sum?.fav, sum?.arch]);
+  const gpg = useGpgFields(view);
 
   if (view === undefined) return <div style={{ padding: "48px", display: "grid", placeItems: "center" }}><Spinner /></div>;
   if (view === null) return <EmptyState text="This item no longer exists"><Button variant="tonal" onClick={pop}>Back</Button></EmptyState>;
   const v = view;
   const needsReprompt = v.reprompt === 1 && !unlocked && !recentlyVerified();
-  const s = { id: v.id, name: v.name, type: v.type, uris: v.login?.uris.map((u) => u.uri) ?? [], fav: v.favorite, rp: v.reprompt === 1, att: v.attachments.length > 0, pk: [] };
+  const isGpg = looksLikeGpgItem(v) && gpg !== null;
+  const s = { id: v.id, name: v.name, type: v.type, uris: v.login?.uris.map((u) => u.uri) ?? [], fav: v.favorite, rp: v.reprompt === 1, att: v.attachments.length > 0, pk: [], gpg: isGpg };
+  // A GPG key item's own fields; its key fields show as the GPG key section instead.
+  const fields = gpg ? gpg.rest : isGpg ? v.fields.filter((f) => !isGpgFieldName(f.name)) : v.fields;
   const l = v.login;
   const hidePw = !v.viewPassword;
 
@@ -221,6 +228,7 @@ export function ItemView({ id, embedded, onFill }: { id: string; embedded?: bool
         : [
             { icon: I.edit, label: "Edit", run: () => push({ name: "edit", id: v.id }) },
             { icon: I.copy, label: "Clone", run: () => push({ name: "edit", type: v.type, prefill: { clone: v.id } }) },
+            ...(isGpg ? [{ icon: I.keyVertical, label: "Use in GPG tools", run: () => push({ name: "gpg-tools", key: v.id }) }] : []),
             {
               icon: I.folder, label: "Move to folder…",
               run: () =>
@@ -324,6 +332,8 @@ export function ItemView({ id, embedded, onFill }: { id: string; embedded?: bool
         </Group>
       )}
 
+      {gpg && <GpgKeyView name={v.name} gkey={gpg.key} />}
+
       {l && l.uris.length > 0 && (
         <Group label="Websites">
           {l.uris.map((u, i) => {
@@ -349,9 +359,9 @@ export function ItemView({ id, embedded, onFill }: { id: string; embedded?: bool
         </Group>
       )}
 
-      {v.fields.length > 0 && (
+      {fields.length > 0 && (
         <Group label="Custom fields">
-          {v.fields.map((f, i) =>
+          {fields.map((f, i) =>
             f.type === 2 ? (
               <Row key={i} title={<span class="t-label-m med">{f.name}</span>} below={<span style={{ color: "var(--on-surface)" }}>{f.value === "true" ? "On" : "Off"}</span>} trailing={<Icon d={I.toggle} />} />
             ) : f.type === 3 ? (
@@ -380,7 +390,7 @@ export function ItemView({ id, embedded, onFill }: { id: string; embedded?: bool
       )}
 
       <Group label="Details">
-        <Row leading={<Icon d={TYPE_META[v.type]?.icon ?? I.key} />} title={TYPE_META[v.type]?.label ?? "Item"} sub="Type" />
+        <Row leading={<Icon d={TYPE_META[isGpg ? GPG_KIND : v.type]?.icon ?? I.key} />} title={TYPE_META[isGpg ? GPG_KIND : v.type]?.label ?? "Item"} sub="Type" />
         <Row leading={<Icon d={I.folder} />} title={v.folderId ? folderNames.value.get(v.folderId) ?? "Folder" : "No folder"} sub="Folder" />
         {v.organizationId && <Row leading={<Icon d={I.group} />} title={orgNames.value.get(v.organizationId) ?? "Organization"} sub={v.collectionIds.map((c) => aux.value.collections.find((x) => x.id === c)?.name).filter(Boolean).join(", ") || "Organization"} />}
         {v.passwordHistory.length > 0 && <Row leading={<Icon d={I.history} />} title={`Password history (${v.passwordHistory.length})`} onClick={() => push({ name: "history", id: v.id })} trailing={<Icon d={I.chevron} />} />}

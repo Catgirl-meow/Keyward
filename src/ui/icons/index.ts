@@ -112,3 +112,6 @@ export { default as eventBusy } from "icon:event_busy";
 export { default as keyOff } from "icon:key_off";
 export { default as health } from "icon:health_and_safety";
 export { default as mobileLock } from "icon:mobile_lock_portrait";
+export { default as keyVertical } from "icon:key_vertical";
+export { default as signature } from "icon:signature";
+export { default as enhancedEncryption } from "icon:enhanced_encryption";

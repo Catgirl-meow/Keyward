@@ -56,14 +56,17 @@ const SendEdit = lazy(() => sendMod().then((m) => m.SendEdit));
 const watchtowerMod = () => import("../screens/watchtower.tsx");
 const WatchtowerScreen = lazy(() => watchtowerMod().then((m) => m.WatchtowerScreen));
 const WatchList = lazy(() => watchtowerMod().then((m) => m.WatchList));
+const GpgTools = lazy(() => import("../screens/gpg.tsx").then((m) => m.GpgTools));
 
 export type Mode = "popup" | "tab";
 
-const NAV: { id: Tab; label: string; icon: string; iconOn: string }[] = [
+// tabOnly: in the full-tab rail; the popup reaches it from Settings.
+const NAV: { id: Tab; label: string; icon: string; iconOn: string; tabOnly?: boolean }[] = [
   { id: "vault", label: "Vault", icon: I.home, iconOn: I.homeFill },
   { id: "generator", label: "Generator", icon: I.password, iconOn: I.password },
   { id: "send", label: "Send", icon: I.send, iconOn: I.send },
   { id: "watchtower", label: "Watchtower", icon: I.shield, iconOn: I.shieldFill },
+  { id: "gpg", label: "GPG tools", icon: I.keyVertical, iconOn: I.keyVertical, tabOnly: true },
   { id: "settings", label: "Settings", icon: I.settings, iconOn: I.settings },
 ];
 
@@ -94,7 +97,7 @@ function selectTab(t: Tab) {
 function NavBar() {
   return (
     <nav class="navbar" aria-label="Sections">
-      {NAV.map((n) => {
+      {NAV.filter((n) => !n.tabOnly).map((n) => {
         const on = tab.value === n.id;
         return (
           <button key={n.id} type="button" aria-current={on ? "page" : undefined} onClick={() => selectTab(n.id)}>
@@ -144,6 +147,8 @@ function tabRoot(t: Tab, mode: Mode, pm: ReturnType<typeof usePageMatches>, fill
       return <SendList />;
     case "watchtower":
       return <WatchtowerScreen />;
+    case "gpg":
+      return <GpgTools root />;
     case "settings":
       return <SettingsScreen />;
   }
@@ -165,6 +170,8 @@ function routeView(r: Route, embedded: boolean, fill?: (id: string, verified?: b
       return <SendEdit id={r.id} type={r.type} />;
     case "watch-list":
       return <WatchList check={r.check} />;
+    case "gpg-tools":
+      return <GpgTools keyId={r.key} />;
     default:
       return null;
   }

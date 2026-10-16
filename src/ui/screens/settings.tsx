@@ -88,6 +88,7 @@ export function SettingsScreen() {
       </Group>
       <div style={{ height: "12px" }} />
       <Group>
+        <Nav icon={I.keyVertical} title="GPG tools" sub="Sign, verify, encrypt and decrypt with your GPG keys" onClick={() => push({ name: "gpg-tools" })} />
         <Nav icon={I.upload} title="Import items" sub="From Bitwarden, Keyguard or a browser" page="import" />
         <Nav icon={I.download} title="Export vault" sub="JSON or CSV, encrypted or not" page="export" />
       </Group>

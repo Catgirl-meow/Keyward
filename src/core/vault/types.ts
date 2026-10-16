@@ -4,6 +4,12 @@
 export const CipherType = { Login: 1, SecureNote: 2, Card: 3, Identity: 4, SshKey: 5 } as const;
 export type CipherType = (typeof CipherType)[keyof typeof CipherType];
 
+/** Keyward's own kind for a GPG key; on the server it is a secure note (src/core/gpg/fields.ts). */
+export const GPG_KIND = 100;
+/** What the list shows an item as: its type, or a GPG key. */
+export type ItemKind = CipherType | typeof GPG_KIND;
+export const kindOf = (s: { type: CipherType; gpg?: boolean }): ItemKind => (s.gpg ? GPG_KIND : s.type);
+
 export const UriMatch = { Domain: 0, Host: 1, StartsWith: 2, Exact: 3, RegularExpression: 4, Never: 5 } as const;
 export type UriMatch = (typeof UriMatch)[keyof typeof UriMatch];
 
@@ -227,4 +233,8 @@ export interface Summary {
   note: string | null; // first 160 chars of notes, for search
   brand: string | null;
   err: string | null;
+  /** a secure note that carries a GPG key */
+  gpg?: boolean;
+  /** SUMMARY_FORMAT it was made with; older summaries are made again on the next sync */
+  f?: number;
 }

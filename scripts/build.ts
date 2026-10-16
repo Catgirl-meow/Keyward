@@ -59,6 +59,8 @@ function common(target: Target): esbuild.BuildOptions {
       __VERSION__: JSON.stringify(pkg.version),
     },
     plugins: [wasmPlugin, iconPlugin],
+    // OpenPGP.js's lightweight bundle: curves and legacy ciphers load only when a key needs them.
+    alias: { openpgp: join(root, "node_modules/openpgp/dist/lightweight/openpgp.min.mjs") },
     loader: { ".woff2": "file", ".svg": "text", ".txt": "text" },
     charset: "utf8",
     drop: dev ? [] : ["debugger"],

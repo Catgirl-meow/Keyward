@@ -1,9 +1,9 @@
 // Search, filter and sort over summaries. Plain loops over <=thousands of items stay well
 // under a frame; no index library needed.
-import { CipherType, type Summary } from "./types.ts";
+import { CipherType, GPG_KIND, kindOf, type ItemKind, type Summary } from "./types.ts";
 
 export interface Filter {
-  type?: CipherType | null;
+  type?: ItemKind | null;
   folder?: string | null; // "none" = no folder
   collection?: string | null;
   org?: string | null; // "personal" = no org
@@ -30,7 +30,7 @@ export interface Hit {
 const fold = (s: string) => s.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 const QUALIFIERS: Record<string, (s: Summary, v: string) => boolean> = {
-  type: (s, v) => ({ login: 1, note: 2, card: 3, identity: 4, ssh: 5 } as Record<string, number>)[v] === s.type,
+  type: (s, v) => ({ login: 1, note: 2, card: 3, identity: 4, ssh: 5, gpg: GPG_KIND } as Record<string, number>)[v] === kindOf(s),
   is: (s, v) => (v === "fav" || v === "favorite" ? s.fav : v === "reprompt" ? s.rp : v === "broken" ? !!s.err : false),
   has: (s, v) => (v === "totp" || v === "otp" ? s.totp : v === "passkey" ? s.pk.length > 0 : v === "attachment" ? s.att : v === "uri" ? s.uris.length > 0 : false),
 };
@@ -55,7 +55,7 @@ export function passesFilter(s: Summary, f: Filter): boolean {
   if (f.archive) {
     if (!s.arch) return false;
   } else if (s.arch && !f.trash) return false;
-  if (f.type != null && s.type !== f.type) return false;
+  if (f.type != null && kindOf(s) !== f.type) return false;
   if (f.favorites && !s.fav) return false;
   if (f.folder != null && (f.folder === "none" ? s.folder != null : s.folder !== f.folder)) return false;
   if (f.org != null && (f.org === "personal" ? s.org != null : s.org !== f.org)) return false;

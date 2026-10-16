@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { emptyView } from "../../core/vault/cipher.ts";
-import { CipherType, IDENTITY_FIELDS, type CipherView, type FieldView } from "../../core/vault/types.ts";
+import { CipherType, GPG_KIND, IDENTITY_FIELDS, type CipherView, type FieldView, type ItemKind } from "../../core/vault/types.ts";
+import { decodeGpgFields, encodeGpgFields, looksLikeGpgItem, type GpgKeyFields } from "../../core/gpg/fields.ts";
 import { generatePassword, DEFAULT_PASSWORD } from "../../core/generator/password.ts";
 import { parseOtp } from "../../core/totp/totp.ts";
 import { quickStrength, STRENGTH_LABEL } from "../../core/watchtower/strength.ts";
@@ -12,6 +13,7 @@ import { pop, replace } from "../data/nav.ts";
 import { TYPE_META } from "./vault-list.tsx";
 import { deleteAttachment, uploadAttachment } from "../data/attachments.ts";
 import { loadGeneratorPrefs } from "./generator.tsx";
+import { GpgKeyEditor } from "./gpg.tsx";
 
 const MATCH_LABELS = ["Base domain", "Host", "Starts with", "Exact", "Regular expression", "Never"];
 
@@ -39,9 +41,18 @@ function Section({ label, children }: { label?: string; children: any }) {
 }
 
 
-export function ItemEdit({ id, type, prefill }: { id?: string; type?: CipherType; prefill?: Record<string, any> }) {
+/** A GPG key item's view without its key fields, and the key; other items as they are. */
+async function splitGpg(view: CipherView): Promise<[CipherView, GpgKeyFields | null]> {
+  const d = looksLikeGpgItem(view) ? await decodeGpgFields(view.fields) : null;
+  return d ? [{ ...view, fields: d.rest }, d.key] : [view, null];
+}
+
+export function ItemEdit({ id, type, prefill }: { id?: string; type?: ItemKind; prefill?: Record<string, any> }) {
   const [v, setV] = useState<CipherView | null>(null);
   const [orig, setOrig] = useState<CipherView | null>(null);
+  // A GPG key item's key (null for other items); kept apart from the custom fields it is stored in.
+  const [gkey, setGkey] = useState<GpgKeyFields | null>(null);
+  const [origKey, setOrigKey] = useState<GpgKeyFields | null>(null);
   const [cols, setCols] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -51,16 +62,24 @@ export function ItemEdit({ id, type, prefill }: { id?: string; type?: CipherType
       if (id) {
         const r = await openItem(id);
         if (r) {
-          setV(structuredClone(r.view));
-          setOrig(r.view);
+          const [view, key] = await splitGpg(r.view);
+          setV(structuredClone(view));
+          setOrig(view);
+          setGkey(key);
+          setOrigKey(key);
           setCols(r.view.collectionIds);
         }
       } else if (prefill?.clone) {
         const r = await openItem(prefill.clone);
-        if (r) setV({ ...structuredClone(r.view), id: "", name: r.view.name + " (copy)", attachments: [], passwordHistory: [], revisionDate: null, creationDate: null });
+        if (r) {
+          const [view, key] = await splitGpg(r.view);
+          setV({ ...structuredClone(view), id: "", name: r.view.name + " (copy)", attachments: [], passwordHistory: [], revisionDate: null, creationDate: null });
+          setGkey(key);
+        }
       } else {
-        const t = type ?? CipherType.Login;
+        const t = type === GPG_KIND ? CipherType.SecureNote : (type ?? CipherType.Login);
         const base = emptyView(t);
+        if (type === GPG_KIND) setGkey({ privateKey: null, publicKey: null, fingerprint: null });
         if (t === CipherType.Login && prefill) {
           base.name = prefill.name ?? "";
           base.login!.username = prefill.username ?? null;
@@ -73,7 +92,7 @@ export function ItemEdit({ id, type, prefill }: { id?: string; type?: CipherType
     })();
   }, [id, prefill?.clone]);
 
-  const dirty = useMemo(() => JSON.stringify(v) !== JSON.stringify(orig), [v, orig]);
+  const dirty = useMemo(() => JSON.stringify([v, gkey]) !== JSON.stringify([orig, origKey]), [v, orig, gkey, origKey]);
   if (!v) return <div style={{ padding: "48px", display: "grid", placeItems: "center" }}><Spinner /></div>;
 
   const set = (patch: Partial<CipherView>) => setV({ ...v, ...patch });
@@ -100,6 +119,10 @@ export function ItemEdit({ id, type, prefill }: { id?: string; type?: CipherType
       if (next.login) next.login.uris = next.login.uris.filter((u) => u.uri.trim());
       if (next.type === CipherType.Card && next.card && !next.card.brand) next.card.brand = cardBrand(next.card.number);
       if (next.organizationId && !cols.length) throw new Error("Pick at least one collection");
+      if (gkey) {
+        if (!gkey.privateKey && !gkey.publicKey) throw new Error("Generate or import a key");
+        next.fields = await encodeGpgFields(gkey, next.fields);
+      }
       const r = await rpc("vault.save", { view: next, collectionIds: next.organizationId ? cols : undefined });
       if (r.conflict) {
         toast("This item was changed on another device. Your edit was saved as a copy.", { tone: "error", ms: 8000 });
@@ -131,7 +154,7 @@ export function ItemEdit({ id, type, prefill }: { id?: string; type?: CipherType
       <TopBar
         back={cancel}
         small
-        title={id ? "Edit item" : `New ${TYPE_META[v.type]?.label.toLowerCase() ?? "item"}`}
+        title={id ? "Edit item" : gkey ? "New GPG key" : `New ${TYPE_META[v.type]?.label.toLowerCase() ?? "item"}`}
         actions={<Button variant="filled" loading={busy} onClick={save} icon={I.check} style={{ marginRight: "8px" }}>Save</Button>}
       />
       {err && <Banner tone="error">{err}</Banner>}
@@ -207,6 +230,12 @@ export function ItemEdit({ id, type, prefill }: { id?: string; type?: CipherType
           {IDENTITY_FIELDS.map((k) => (
             <TextField key={k} label={IDENTITY_LABELS[k]} value={(v.identity as any)[k] ?? ""} onInput={(x) => setIdentity(k, x)} />
           ))}
+        </Section>
+      )}
+
+      {gkey && (
+        <Section label="GPG key">
+          <GpgKeyEditor value={gkey} onChange={setGkey} suggestName={(n) => n && setV((cur) => (cur && !cur.name.trim() ? { ...cur, name: n } : cur))} />
         </Section>
       )}
 

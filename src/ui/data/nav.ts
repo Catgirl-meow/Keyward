@@ -1,12 +1,13 @@
 import { signal } from "@preact/signals";
-import type { CipherType } from "../../core/vault/types.ts";
+import type { ItemKind } from "../../core/vault/types.ts";
 
-export type Tab = "vault" | "generator" | "send" | "watchtower" | "settings";
+export type Tab = "vault" | "generator" | "send" | "watchtower" | "gpg" | "settings";
 
 export type Route =
   | { name: "home" }
   | { name: "item"; id: string }
-  | { name: "edit"; id?: string; type?: CipherType; prefill?: Record<string, any> }
+  | { name: "edit"; id?: string; type?: ItemKind; prefill?: Record<string, any> }
+  | { name: "gpg-tools"; key?: string }
   | { name: "settings-page"; page: string }
   | { name: "send-edit"; id?: string; type?: number }
   | { name: "watch-list"; check: string }

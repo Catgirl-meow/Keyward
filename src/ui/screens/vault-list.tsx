@@ -3,7 +3,7 @@ import type { JSX } from "preact";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { faviconHostCheap } from "../data/hosts.ts";
 import { search, type Filter, type Hit, type SortKey } from "../../core/vault/search.ts";
-import { CipherType, type Summary } from "../../core/vault/types.ts";
+import { CipherType, GPG_KIND, kindOf, type ItemKind, type Summary } from "../../core/vault/types.ts";
 import { rpc, type PageMatch } from "../../platform/messages.ts";
 import { Avatar, Chip, EmptyState, Icon, IconButton, Row, Skeleton, openMenu, toast, Badge, type MenuItem } from "../components/kit.tsx";
 import * as I from "../icons/index.ts";
@@ -22,6 +22,7 @@ export const TYPE_META: Record<number, { label: string; plural: string; icon: st
   [CipherType.Identity]: { label: "Identity", plural: "Identities", icon: I.person },
   [CipherType.SecureNote]: { label: "Note", plural: "Notes", icon: I.note },
   [CipherType.SshKey]: { label: "SSH key", plural: "SSH keys", icon: I.terminal },
+  [GPG_KIND]: { label: "GPG key", plural: "GPG keys", icon: I.keyVertical },
 };
 
 const results = computed<Hit[]>(() => search(items.value.values(), query.value, filter.value, sort.value, folderNames.value));
@@ -39,7 +40,7 @@ function highlight(text: string, hits?: [number, number][]): JSX.Element | strin
   return <>{out}</>;
 }
 
-export function ItemAvatar({ s }: { s: Pick<Summary, "id" | "name" | "type" | "uris" | "fav" | "rp" | "att" | "pk"> }) {
+export function ItemAvatar({ s }: { s: Pick<Summary, "id" | "name" | "type" | "uris" | "fav" | "rp" | "att" | "pk" | "gpg"> }) {
   const host = s.type === CipherType.Login ? faviconHostCheap(s.uris) : null;
   const badges: string[] = [];
   if (s.fav) badges.push(I.starFill);
@@ -50,7 +51,7 @@ export function ItemAvatar({ s }: { s: Pick<Summary, "id" | "name" | "type" | "u
       seed={s.id}
       name={s.name}
       src={host ? iconUrl(host) : null}
-      icon={s.type !== CipherType.Login ? TYPE_META[s.type]?.icon : !host ? undefined : undefined}
+      icon={s.type !== CipherType.Login ? TYPE_META[kindOf(s)]?.icon : undefined}
       badges={badges}
     />
   );
@@ -204,7 +205,7 @@ function FilterChips() {
         icon={I.filter}
         label={f.type != null ? TYPE_META[f.type]?.plural : "Type"}
         onClear={() => set({ type: null })}
-        items={() => Object.entries(TYPE_META).map(([t, m]) => ({ icon: m.icon, label: m.plural, run: () => set({ type: Number(t) as CipherType }) }))}
+        items={() => Object.entries(TYPE_META).map(([t, m]) => ({ icon: m.icon, label: m.plural, run: () => set({ type: Number(t) as ItemKind }) }))}
       />
       <Chip selected={!!f.favorites} icon={I.star} onClick={() => set({ favorites: !f.favorites })}>Favorites</Chip>
       <MenuChip
@@ -404,7 +405,7 @@ export function VaultList({ popup, onOpen, pageMatches, onFill }: { popup?: bool
 export function newItemMenu(anchor: HTMLElement, prefill?: Record<string, any>) {
   openMenu(anchor, [
     { header: true, label: "New item" },
-    ...[CipherType.Login, CipherType.Card, CipherType.Identity, CipherType.SecureNote, CipherType.SshKey].map((t) => ({
+    ...([CipherType.Login, CipherType.Card, CipherType.Identity, CipherType.SecureNote, CipherType.SshKey, GPG_KIND] as ItemKind[]).map((t) => ({
       icon: TYPE_META[t].icon,
       label: TYPE_META[t].label,
       run: () => push({ name: "edit", type: t, prefill }),

@@ -56,6 +56,8 @@ export interface FieldProps {
   type?: string;
   mono?: boolean;
   multiline?: boolean;
+  /** textarea height in lines (multiline only) */
+  rows?: number;
   autoFocus?: boolean;
   placeholder?: string;
   hint?: ComponentChildren;
@@ -99,7 +101,7 @@ export function TextField(p: FieldProps) {
       <div class={`field ${filled ? "filled" : ""} ${p.error ? "error" : ""} ${p.label ? "" : "no-label"}`}>
         {p.leading && <div class="lead">{p.leading}</div>}
         {p.label && <label>{p.label}</label>}
-        {p.multiline ? <textarea {...(common as any)} rows={3} /> : <input {...(common as any)} type={p.type ?? "text"} inputMode={p.inputMode} maxLength={p.maxLength} />}
+        {p.multiline ? <textarea {...(common as any)} rows={p.rows ?? 3} /> : <input {...(common as any)} type={p.type ?? "text"} inputMode={p.inputMode} maxLength={p.maxLength} />}
         {p.trailing && <div class="trail">{p.trailing}</div>}
       </div>
       {(p.error || p.hint) && <div class={`field-hint ${p.error ? "error" : ""}`}>{p.error || p.hint}</div>}

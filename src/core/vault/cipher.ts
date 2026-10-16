@@ -7,6 +7,7 @@ import { sha256 } from "../crypto/primitives.ts";
 import { completeSshKey } from "../ssh/keys.ts";
 import { SymKey } from "../crypto/symkey.ts";
 import { equalBytes, toB64 } from "../util/bytes.ts";
+import { GPG_FIELD, looksLikeGpgItem } from "../gpg/fields.ts";
 import {
   CARD_FIELDS, CipherType, IDENTITY_FIELDS,
   type CipherView, type Fido2View, type FieldView, type LoginView, type RawCipher, type RawUri, type Summary, type UriView, type UriMatch
@@ -204,13 +205,21 @@ export function subtitleOf(v: CipherView): string {
       return identitySubtitle(v.identity);
     case CipherType.SshKey:
       return v.sshKey?.keyFingerprint ?? "";
+    case CipherType.SecureNote:
+      if (looksLikeGpgItem(v)) return v.fields.find((f) => f.name === GPG_FIELD.fingerprint)?.value ?? "GPG key";
+      return v.notes ? v.notes.slice(0, 80).replace(/\s+/g, " ") : "";
     default:
       return v.notes ? v.notes.slice(0, 80).replace(/\s+/g, " ") : "";
   }
 }
 
+/** Bumped when summaries gain something; a sync then makes them again. 2: GPG keys. */
+export const SUMMARY_FORMAT = 2;
+
 export function summarize(v: CipherView): Summary {
   return {
+    f: SUMMARY_FORMAT,
+    gpg: looksLikeGpgItem(v),
     id: v.id,
     type: v.type,
     name: v.name,

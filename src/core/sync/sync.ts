@@ -6,7 +6,7 @@ import { decryptOrgKey, decryptPrivateKey, type PrivateKeyPair } from "../crypto
 import type { SymKey } from "../crypto/symkey.ts";
 import type { VaultDB } from "../store/db.ts";
 import { bucketOf, loadSnapshot, writeBuckets, type AuxData } from "../store/summaries.ts";
-import { decryptCipher, summarize, type KeyRing } from "../vault/cipher.ts";
+import { decryptCipher, summarize, SUMMARY_FORMAT, type KeyRing } from "../vault/cipher.ts";
 import type { RawCipher, RawCollection, RawFolder, RawOrg } from "../vault/types.ts";
 
 export interface SyncDeps {
@@ -82,7 +82,7 @@ export async function fullSync(d: SyncDeps): Promise<SyncResult> {
     ciphers.map(async (c) => {
       seen.add(c.id);
       const old = items.get(c.id);
-      if (old && !old.err && prevRev.get(c.id) === c.revisionDate) return;
+      if (old && !old.err && old.f === SUMMARY_FORMAT && prevRev.get(c.id) === c.revisionDate) return;
       const view = await decryptCipher(c, ring);
       items.set(c.id, summarize(view));
       dirty.add(bucketOf(c.id));
