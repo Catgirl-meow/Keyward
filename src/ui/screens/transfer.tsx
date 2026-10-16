@@ -12,6 +12,7 @@ import { account, aux, currentRing, folderNames, items, openItem, rawCiphers, ra
 import { saveBytes } from "../data/attachments.ts";
 import { verifyMasterPassword } from "../data/master-password.ts";
 import { home } from "../data/nav.ts";
+import { guardFileDialog } from "../data/resume.ts";
 import { TYPE_META } from "./vault-list.tsx";
 
 const FORMATS: [ExportFormat, string][] = [
@@ -154,7 +155,7 @@ export function ImportPage() {
       <label class={`file-pick ${file ? "chosen" : ""}`}>
         <Icon d={file ? I.note : I.upload} />
         <span class="grow">{file ? file.name : "Choose a file"}{file && <span class="med"> · {FORMAT_LABEL[file.format]}</span>}</span>
-        <input type="file" hidden aria-label="Import file" accept=".json,.csv,application/json,text/csv" onChange={(e) => { void pick(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
+        <input type="file" hidden aria-label="Import file" accept=".json,.csv,application/json,text/csv" onClick={guardFileDialog} onChange={(e) => { void pick(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
       </label>
       {file?.format === "bitwarden_password_json" && !result && (
         <>

@@ -1,11 +1,12 @@
 // Send: share text or a file through a link that carries its own key.
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { SendType, sendStatus, type SendDraft, type SendView } from "../../core/send/send.ts";
 import { rpc } from "../../platform/messages.ts";
 import { Avatar, Badge, Banner, Button, EmptyState, Group, Icon, IconButton, Row, SecretField, Select, Skeleton, Switch, TextField, TopBar, confirm, openMenu, toast } from "../components/kit.tsx";
 import * as I from "../icons/index.ts";
 import { copyText } from "../data/clipboard.ts";
-import { pop, push, stack } from "../data/nav.ts";
+import { pop, push, stack, top } from "../data/nav.ts";
+import { draftKey, guardFileDialog, saveDraft, takeDraft } from "../data/resume.ts";
 import { createFileSend, linkOf, sends, sendsError } from "../data/sends.ts";
 
 const TYPE = {
@@ -121,22 +122,17 @@ function Toggle({ title, sub, checked, onChange }: { title: string; sub?: string
   );
 }
 
+/** What the Send editor keeps while the popup is closed (data/resume.ts). A chosen file isn't. */
+interface SendEditDraft {
+  d: SendDraft;
+  deletion: string;
+  expiration: string;
+  password: string;
+  start: string;
+}
+
 export function SendEdit({ id, type }: { id?: string; type?: number }) {
   const orig = id ? sends.value?.find((s) => s.id === id) ?? null : null;
-  const [d, setD] = useState<SendDraft>(() =>
-    orig
-      ? { id: orig.id, type: orig.type, name: orig.name, notes: orig.notes, text: orig.text, maxAccessCount: orig.maxAccessCount, expirationDate: orig.expirationDate, deletionDate: orig.deletionDate, disabled: orig.disabled, hideEmail: orig.hideEmail }
-      : { type: type === SendType.File ? SendType.File : SendType.Text, name: "", notes: null, text: { text: "", hidden: false }, maxAccessCount: null, expirationDate: null, deletionDate: inHours(168), disabled: false, hideEmail: false },
-  );
-  // The editor's choices: hours from now, or "keep" for the date an existing Send has.
-  const [deletion, setDeletion] = useState(orig ? "keep" : "168");
-  const [expiration, setExpiration] = useState(orig ? (orig.expirationDate ? "keep" : "") : "");
-  const [password, setPassword] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const set = (p: Partial<SendDraft>) => setD((x) => ({ ...x, ...p }));
-
   if (id && !orig) {
     return (
       <div class="send-edit">
@@ -145,6 +141,33 @@ export function SendEdit({ id, type }: { id?: string; type?: number }) {
       </div>
     );
   }
+  // Mounted only once the Send is known, so an existing Send never starts out as a new one.
+  return <SendEditor orig={orig} type={type} />;
+}
+
+function SendEditor({ orig, type }: { orig: SendView | null; type?: number }) {
+  const [key] = useState(() => draftKey(top()));
+  const [kept] = useState(() => takeDraft<SendEditDraft>(key));
+  const [d, setD] = useState<SendDraft>(() =>
+    kept?.d ??
+    (orig
+      ? { id: orig.id, type: orig.type, name: orig.name, notes: orig.notes, text: orig.text, maxAccessCount: orig.maxAccessCount, expirationDate: orig.expirationDate, deletionDate: orig.deletionDate, disabled: orig.disabled, hideEmail: orig.hideEmail }
+      : { type: type === SendType.File ? SendType.File : SendType.Text, name: "", notes: null, text: { text: "", hidden: false }, maxAccessCount: null, expirationDate: null, deletionDate: inHours(168), disabled: false, hideEmail: false }),
+  );
+  // The editor's choices: hours from now, or "keep" for the date an existing Send has.
+  const [deletion, setDeletion] = useState(kept?.deletion ?? (orig ? "keep" : "168"));
+  const [expiration, setExpiration] = useState(kept?.expiration ?? (orig ? (orig.expirationDate ? "keep" : "") : ""));
+  const [password, setPassword] = useState(kept?.password ?? "");
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const set = (p: Partial<SendDraft>) => setD((x) => ({ ...x, ...p }));
+  // Kept from the first change on, until the route is left (saved or discarded).
+  const [start] = useState(() => kept?.start ?? JSON.stringify([d, deletion, expiration, password]));
+  const now = JSON.stringify([d, deletion, expiration, password]);
+  useEffect(() => {
+    if (now !== start) saveDraft(key, { d, deletion, expiration, password, start } satisfies SendEditDraft);
+  }, [now]);
 
   async function save() {
     setErr(null);
@@ -215,7 +238,7 @@ export function SendEdit({ id, type }: { id?: string; type?: number }) {
           <label class={`file-pick ${file ? "chosen" : ""}`}>
             <Icon d={file ? I.attach : I.upload} />
             <span class="grow">{file ? file.name : "Choose a file"}<span class="med">{file ? ` · ${(file.size / 1024).toFixed(file.size < 10240 ? 1 : 0)} KB` : " · up to 100 MB"}</span></span>
-            <input type="file" hidden aria-label="File" onChange={(e) => {
+            <input type="file" hidden aria-label="File" onClick={guardFileDialog} onChange={(e) => {
               const f = e.currentTarget.files?.[0] ?? null;
               if (f && f.size > MAX_FILE) return toast("Files up to 100 MB", { tone: "error" });
               setFile(f);

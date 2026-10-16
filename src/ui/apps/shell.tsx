@@ -13,6 +13,7 @@ import * as I from "../icons/index.ts";
 import { applyCachedTheme } from "../theme/theme.ts";
 import { account, addingAccount, boot, phase, syncNow, syncStatus, syncing } from "../data/app.ts";
 import { direction, home, pop, push, stack, tab, type Route, type Tab } from "../data/nav.ts";
+import { setResumeMode } from "../data/resume.ts";
 import { recentlyVerified } from "../data/reprompt.ts";
 import { AccountButton } from "../screens/account-menu.tsx";
 import { newItemMenu, selectedId, usePageMatches, VaultList } from "../screens/vault-list.tsx";
@@ -350,6 +351,12 @@ function Overlays() {
 
 export async function mount(mode: Mode) {
   document.documentElement.dataset.mode = mode;
+  // The popup keeps its screen across closes; a full tab opened with #resume takes it over.
+  if (mode === "popup") setResumeMode("popup");
+  else if (location.hash === "#resume") {
+    setResumeMode("handoff");
+    history.replaceState(null, "", location.pathname);
+  }
   applyCachedTheme();
   const el = document.getElementById("app")!;
   render(<App mode={mode} />, el);

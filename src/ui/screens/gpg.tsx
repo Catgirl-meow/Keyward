@@ -10,6 +10,7 @@ import { saveBytes } from "../data/attachments.ts";
 import { copyText } from "../data/clipboard.ts";
 import { ascName, pgp, vaultGpgKeys, type VaultGpgKey } from "../data/gpg.ts";
 import { pop } from "../data/nav.ts";
+import { guardFileDialog } from "../data/resume.ts";
 import { recentlyVerified } from "../data/reprompt.ts";
 import { RepromptSheet } from "./item-view.tsx";
 
@@ -209,7 +210,7 @@ function ImportKey({ onKey }: { onKey: (k: GpgKeyFields, uid: string) => void })
         <label class="btn text has-icon">
           <Icon d={I.upload} size={18} />
           Choose file
-          <input type="file" accept=".asc,.gpg,.pgp,.key,.txt,application/pgp-keys" hidden onChange={async (e) => {
+          <input type="file" accept=".asc,.gpg,.pgp,.key,.txt,application/pgp-keys" hidden onClick={guardFileDialog} onChange={async (e) => {
             const f = e.currentTarget.files?.[0];
             if (f) await take(new Uint8Array(await f.arrayBuffer()));
           }} />

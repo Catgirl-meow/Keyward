@@ -45,7 +45,8 @@ export async function setUnlocked(accountId: string, ring: KeyRing): Promise<voi
 
 export async function clearUnlocked(accountId: string): Promise<void> {
   ringCache.delete(accountId);
-  await session.remove(`unlocked:${accountId}`);
+  // With the keys go the popup's kept screen and unsaved forms (ui/data/resume.ts).
+  await session.remove([`unlocked:${accountId}`, `ui:${accountId}`]);
   await local.remove(`persistKey:${accountId}`);
 }
 

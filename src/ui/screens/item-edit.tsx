@@ -9,7 +9,8 @@ import { rpc } from "../../platform/messages.ts";
 import { Badge, Banner, Button, Group, Icon, IconButton, Row, SecretField, Select, Spinner, Switch, TextField, TopBar, confirm, openMenu, toast } from "../components/kit.tsx";
 import * as I from "../icons/index.ts";
 import { aux, openItem, settings } from "../data/app.ts";
-import { pop, replace } from "../data/nav.ts";
+import { pop, replace, top } from "../data/nav.ts";
+import { draftKey, guardFileDialog, saveDraft, takeDraft } from "../data/resume.ts";
 import { TYPE_META } from "./vault-list.tsx";
 import { deleteAttachment, uploadAttachment } from "../data/attachments.ts";
 import { loadGeneratorPrefs } from "./generator.tsx";
@@ -47,7 +48,21 @@ async function splitGpg(view: CipherView): Promise<[CipherView, GpgKeyFields | n
   return d ? [{ ...view, fields: d.rest }, d.key] : [view, null];
 }
 
+/** What the editor keeps while the popup is closed (data/resume.ts). */
+interface EditDraft {
+  v: CipherView;
+  orig: CipherView | null;
+  gkey: GpgKeyFields | null;
+  origKey: GpgKeyFields | null;
+  cols: string[];
+  /** The form as it opened, to tell whether anything was changed. */
+  start: string;
+}
+
 export function ItemEdit({ id, type, prefill }: { id?: string; type?: ItemKind; prefill?: Record<string, any> }) {
+  // The route showing this editor: its unsaved changes are kept under it.
+  const [key] = useState(() => draftKey(top()));
+  const [start, setStart] = useState<string | null>(null);
   const [v, setV] = useState<CipherView | null>(null);
   const [orig, setOrig] = useState<CipherView | null>(null);
   // A GPG key item's key (null for other items); kept apart from the custom fields it is stored in.
@@ -59,6 +74,16 @@ export function ItemEdit({ id, type, prefill }: { id?: string; type?: ItemKind; 
 
   useEffect(() => {
     (async () => {
+      const kept = takeDraft<EditDraft>(key);
+      if (kept) {
+        setV(kept.v);
+        setOrig(kept.orig);
+        setGkey(kept.gkey);
+        setOrigKey(kept.origKey);
+        setCols(kept.cols);
+        setStart(kept.start);
+        return;
+      }
       if (id) {
         const r = await openItem(id);
         if (r) {
@@ -93,6 +118,13 @@ export function ItemEdit({ id, type, prefill }: { id?: string; type?: ItemKind; 
   }, [id, prefill?.clone]);
 
   const dirty = useMemo(() => JSON.stringify([v, gkey]) !== JSON.stringify([orig, origKey]), [v, orig, gkey, origKey]);
+  // Kept from the first change on, until the route is left (saved or discarded).
+  const now = v ? JSON.stringify([v, gkey, cols]) : null;
+  useEffect(() => {
+    if (!v || !now) return;
+    if (start == null) setStart(now);
+    else if (now !== start) saveDraft(key, { v, orig, gkey, origKey, cols, start } satisfies EditDraft);
+  }, [now, start]);
   if (!v) return <div style={{ padding: "48px", display: "grid", placeItems: "center" }}><Spinner /></div>;
 
   const set = (patch: Partial<CipherView>) => setV({ ...v, ...patch });
@@ -327,7 +359,7 @@ export function ItemEdit({ id, type, prefill }: { id?: string; type?: ItemKind; 
           <label class="btn tonal has-icon" style={{ alignSelf: "flex-start" }}>
             <Icon d={I.upload} size={18} />
             Add attachment
-            <input type="file" hidden onChange={async (e) => {
+            <input type="file" hidden onClick={guardFileDialog} onChange={async (e) => {
               const f = e.currentTarget.files?.[0];
               if (!f) return;
               if (f.size > 100 * 1024 * 1024) return toast("Files up to 100 MB", { tone: "error" });

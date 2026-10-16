@@ -13,6 +13,7 @@ import { SymKey } from "../../core/crypto/symkey.ts";
 import { DEFAULT_SETTINGS, loadSettings, LockTimeout, saveSettings, type Settings } from "../../platform/settings.ts";
 import { local, onChanged, session } from "../../platform/storage.ts";
 import { applyTheme, watchSystemTheme } from "../theme/theme.ts";
+import { forgetUi, restoreUi, uiKey } from "./resume.ts";
 
 export type Phase = "boot" | "login" | "locked" | "unlocked";
 
@@ -79,6 +80,7 @@ export async function refreshPhase(): Promise<void> {
   accounts.value = await loadAccounts();
   const a = account.value;
   if (!a) {
+    forgetUi();
     phase.value = "login";
     ring = null;
     return;
@@ -99,6 +101,7 @@ export async function refreshPhase(): Promise<void> {
     }
   }
   if (!ring) {
+    forgetUi();
     phase.value = "locked";
     items.value = new Map();
     vaultLoaded.value = false;
@@ -106,8 +109,11 @@ export async function refreshPhase(): Promise<void> {
     return;
   }
   mark("ring");
+  // The screen the popup was on when it closed (data/resume.ts), set before the vault renders.
+  const kept = await session.getMany([`sync:${a.id}`, uiKey(a.id)]);
+  restoreUi(a.id, kept[uiKey(a.id)]);
   phase.value = "unlocked";
-  syncStatus.value = (await session.get<SyncStatus>(`sync:${a.id}`)) ?? null;
+  syncStatus.value = kept[`sync:${a.id}`] ?? null;
   await loadVault();
 }
 
