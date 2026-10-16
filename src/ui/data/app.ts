@@ -1,6 +1,7 @@
 // UI state shared by the popup and the full-tab vault. Pages read storage/IndexedDB directly
 // (no service-worker round trip before first paint) and send writes to the background.
 import { computed, effect, signal } from "@preact/signals";
+import type { RawSend } from "../../core/send/send.ts";
 import { VaultDB } from "../../core/store/db.ts";
 import { loadSnapshot, type AuxData } from "../../core/store/summaries.ts";
 import { decryptCipher, type KeyRing } from "../../core/vault/cipher.ts";
@@ -129,6 +130,10 @@ export async function openItem(id: string): Promise<{ view: CipherView; raw: Raw
   const raw = await db.getCipher(id);
   if (!raw) return null;
   return { view: await decryptCipher(raw, ring), raw };
+}
+
+export async function rawSends(): Promise<RawSend[]> {
+  return (await db?.getAll<RawSend>("sends")) ?? [];
 }
 
 export async function rawItem(id: string): Promise<RawCipher | undefined> {

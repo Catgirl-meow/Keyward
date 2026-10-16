@@ -23,7 +23,7 @@ interface Check {
 export const CHECKS: Check[] = [
   { id: "exposed", title: "Exposed passwords", icon: I.dataAlert, tone: "error",
     text: "These passwords appear in known data breaches. Change them, and anywhere else you used them.",
-    ask: "Check with Have I Been Pwned. Only the first 5 characters of each password's SHA-1 hash are sent." },
+    ask: "Check with Have I Been Pwned. Only 5 characters of each password's hash are sent." },
   { id: "reused", title: "Reused passwords", icon: I.repeat, tone: "error",
     text: "One leak exposes every account that shares a password. Give each of these its own." },
   { id: "weak", title: "Weak passwords", icon: I.password, tone: "error",
@@ -32,7 +32,7 @@ export const CHECKS: Check[] = [
     text: "These logins use plain http, so the password travels unencrypted. Switch the address to https if the site supports it." },
   { id: "inactive2fa", title: "Two-step login available", icon: I.mobileLock, tone: "warn",
     text: "These sites offer one-time codes, but no code is saved here. Turn two-step login on at the site and add the code to the item.",
-    ask: "Download the list of sites from 2fa.directory. Nothing about your vault is sent." },
+    ask: "Download 2fa.directory's list of sites. Nothing about your vault is sent." },
   { id: "weakKeys", title: "Weak SSH keys", icon: I.keyOff, tone: "warn",
     text: "Short RSA and DSA keys can be broken. Generate a new Ed25519 key." },
   { id: "expiring", title: "Expiring cards", icon: I.eventBusy, tone: "warn",

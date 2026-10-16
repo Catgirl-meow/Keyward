@@ -50,6 +50,9 @@ const RepromptSheet = lazy(() => import("../screens/item-view.tsx").then((m) => 
 const settingsMod = () => import("../screens/settings.tsx");
 const SettingsScreen = lazy(() => settingsMod().then((m) => m.SettingsScreen));
 const SettingsPage = lazy(() => settingsMod().then((m) => m.SettingsPage));
+const sendMod = () => import("../screens/send.tsx");
+const SendList = lazy(() => sendMod().then((m) => m.SendList));
+const SendEdit = lazy(() => sendMod().then((m) => m.SendEdit));
 const watchtowerMod = () => import("../screens/watchtower.tsx");
 const WatchtowerScreen = lazy(() => watchtowerMod().then((m) => m.WatchtowerScreen));
 const WatchList = lazy(() => watchtowerMod().then((m) => m.WatchList));
@@ -131,15 +134,6 @@ function Rail() {
 }
 
 // ---------------------------------------------------------------- routes
-function Placeholder({ title, text }: { title: string; text: string }) {
-  return (
-    <div class="page-enter">
-      <div class="topbar"><div class="heading" style={{ paddingLeft: "12px" }}>{title}</div></div>
-      <EmptyState text={text} />
-    </div>
-  );
-}
-
 function tabRoot(t: Tab, mode: Mode, pm: ReturnType<typeof usePageMatches>, fill: (id: string) => void, open: (s: Summary) => void) {
   switch (t) {
     case "vault":
@@ -147,7 +141,7 @@ function tabRoot(t: Tab, mode: Mode, pm: ReturnType<typeof usePageMatches>, fill
     case "generator":
       return <GeneratorScreen />;
     case "send":
-      return <Placeholder title="Send" text="Share text and files with end-to-end encryption. Coming in a later build." />;
+      return <SendList />;
     case "watchtower":
       return <WatchtowerScreen />;
     case "settings":
@@ -167,6 +161,8 @@ function routeView(r: Route, embedded: boolean, fill?: (id: string, verified?: b
       return <SettingsPage page={r.page} />;
     case "folders":
       return <SettingsPage page="folders" />;
+    case "send-edit":
+      return <SendEdit id={r.id} type={r.type} />;
     case "watch-list":
       return <WatchList check={r.check} />;
     default:
@@ -281,8 +277,12 @@ function Unlocked({ mode }: { mode: Mode }) {
   const body = (
     <main class="content" onPointerDown={activity} onKeyDown={activity}>
       {s.length > 1 ? <Animated k={routeKey(top, s.length)}>{routeView(top, false, popup ? fill : undefined)}</Animated> : <Animated k={`root:${tab.value}`}>{root}</Animated>}
-      {tab.value === "vault" && s.length === 1 && (
-        <button type="button" class="fab" onClick={(e) => newItemMenu(e.currentTarget as HTMLElement)}>
+      {(tab.value === "vault" || tab.value === "send") && s.length === 1 && (
+        <button type="button" class="fab" onClick={(e) => {
+          const at = e.currentTarget as HTMLElement;
+          if (tab.value === "send") void sendMod().then((m) => m.newSendMenu(at));
+          else newItemMenu(at);
+        }}>
           <Icon d={I.add} />
           New
         </button>
@@ -354,7 +354,7 @@ export async function mount(mode: Mode) {
   void UnlockScreen.preload();
   await booting;
   void ItemView.preload();
-  setTimeout(() => [ItemEdit, GeneratorScreen, SettingsScreen, WatchtowerScreen].forEach((c) => void c.preload()), 50);
+  setTimeout(() => [ItemEdit, GeneratorScreen, SettingsScreen, SendList, WatchtowerScreen].forEach((c) => void c.preload()), 50);
   if (await loadPending()) addingAccount.value = phase.value !== "login";
   // "Check on open": the background pushes the lock deadline and runs a cheap revision-date
   // check; a full sync happens only if something changed.

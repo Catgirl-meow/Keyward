@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -17,6 +17,8 @@ import { assert as passkeySign, coseKeyES256, createPasskey, credentialIdBytes, 
 import { authenticationJSON, clientDataJSON } from "../../src/core/passkey/client.ts";
 import { sha256 } from "../../src/core/crypto/primitives.ts";
 import { toB64Url, utf8 } from "../../src/core/util/bytes.ts";
+import { decryptSend, encryptSend, inDays, parseSendLink, sendLink, SendType, type RawSend } from "../../src/core/send/send.ts";
+import { encryptBuffer } from "../../src/core/crypto/encstring.ts";
 import { SERVER, importItems, login, randomPassword, register, sync, uniqueEmail, type Session } from "../lib/vw.ts";
 
 const root = new URL("../..", import.meta.url).pathname;
@@ -206,5 +208,48 @@ describe("interop with the official Bitwarden CLI", { skip: !existsSync(BW) && "
     assert.equal(v.login?.password, "edited-by-bw");
     assert.equal(v.fields.length, 3);
     assert.deepEqual(v.errors, []);
+  });
+
+  test("Send: bw opens a text Send Keyward made, password included", async () => {
+    const { body, material } = await encryptSend(
+      { type: SendType.Text, name: "KW send", notes: null, text: { text: "Кириллица 🔑 and a secret", hidden: true }, maxAccessCount: 5, expirationDate: null, deletionDate: inDays(2), disabled: false, hideEmail: false },
+      s.ring.user,
+      "open sesame",
+    );
+    const made = (await s.api.post("/sends", body)) as RawSend;
+    const link = sendLink(proxy!.url, made.accessId, toB64Url(material));
+    // `bw receive`, not `bw send receive`: there the parent command takes --password for itself.
+    // Wrong first: bw keeps the access token a right password got it, and reuses it.
+    await assert.rejects(bw(["receive", link, "--password", "wrong"]), (e: any) => /Invalid password/.test(e.stderr ?? ""));
+    assert.equal(await bw(["receive", link, "--password", "open sesame"]), "Кириллица 🔑 and a secret");
+    assert.equal(((await sync(s)).sends as RawSend[]).find((x) => x.id === made.id)?.accessCount, 1);
+  });
+
+  test("Send: bw opens a file Send Keyward made", async () => {
+    const bytes = utf8("file body ".repeat(1000));
+    const { body, key, material } = await encryptSend(
+      { type: SendType.File, name: "KW file", notes: null, text: null, fileName: "notes.txt", maxAccessCount: null, expirationDate: null, deletionDate: inDays(1), disabled: false, hideEmail: false },
+      s.ring.user,
+    );
+    const data = await encryptBuffer(bytes, key);
+    const r = await s.api.post("/sends/file/v2", { ...body, fileLength: data.length });
+    const form = new FormData();
+    // Vaultwarden checks that the part's filename is the encrypted file name.
+    form.append("data", new Blob([data]), (body.file as { fileName: string }).fileName);
+    await s.api.request("POST", r.url, form, { timeout: 0 });
+    const dir = mkdtempSync(join(tmpdir(), "kw-bw-send-"));
+    await bw(["receive", sendLink(proxy!.url, r.sendResponse.accessId, toB64Url(material)), "--output", join(dir, "got.txt")]);
+    assert.equal(readFileSync(join(dir, "got.txt"), "utf8"), "file body ".repeat(1000));
+  });
+
+  test("Send: Keyward reads a Send bw made", async () => {
+    const made = await bwJson(["send", "-n", "BW send", "--notes", "from bw", "--hidden", "-d", "3", "--fullObject", "Text written by bw"]);
+    const raw = ((await sync(s)).sends as RawSend[]).find((x) => x.id === made.id)!;
+    const v = await decryptSend(raw, s.ring.user);
+    assert.deepEqual([v.name, v.notes, v.text], ["BW send", "from bw", { text: "Text written by bw", hidden: true }]);
+    // Same link: bw's and the one Keyward builds from the stored key.
+    const theirs = parseSendLink(made.accessUrl)!;
+    assert.equal(theirs.accessId, v.accessId);
+    assert.equal(toB64Url(theirs.material), v.material);
   });
 });

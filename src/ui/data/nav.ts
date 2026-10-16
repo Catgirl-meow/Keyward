@@ -8,7 +8,7 @@ export type Route =
   | { name: "item"; id: string }
   | { name: "edit"; id?: string; type?: CipherType; prefill?: Record<string, any> }
   | { name: "settings-page"; page: string }
-  | { name: "send-edit"; id?: string }
+  | { name: "send-edit"; id?: string; type?: number }
   | { name: "watch-list"; check: string }
   | { name: "history"; id: string }
   | { name: "folders" }

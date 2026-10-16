@@ -37,7 +37,10 @@ features on the client version; keep it current).
 - URI checksum: `uriChecksum` = base64(SHA-256(uri)), encrypted; a mismatch drops that URI.
 - Attachments v2: `POST /api/ciphers/{id}/attachment/v2` → upload URL; file bytes are an EncArrayBuffer
   `[type 1 B][iv 16][mac 32][ct]` under the attachment key (wrapped by the item key).
-- Send: key material = HKDF(sendKey, "bitwarden-send", "send", 64).
+- Send: see [Send](#send).
+- SSH key items: Vaultwarden 1.37 silently drops the whole `sshKey` object if any of
+  `privateKey`, `publicKey`, `keyFingerprint` is null. Keyward derives what it can and sends `""`
+  (encrypted) for the rest.
 
 ## Sync
 
@@ -53,6 +56,30 @@ features on the client version; keep it current).
 - Update: `PUT /api/ciphers/{id}` with `lastKnownRevisionDate` (server rejects stale edits).
 - Soft delete `PUT /api/ciphers/{id}/delete`, restore `PUT .../restore`, hard delete `DELETE /api/ciphers/{id}`.
 - Bulk import (used by tests): `POST /api/ciphers/import` `{ciphers, folders, folderRelationships}`.
+
+## Send
+
+Checked against Vaultwarden 1.37.2 and `bw` 2026.6 (tests/e2e/interop.test.ts).
+
+- Key material: 16 random bytes. Send key = HKDF-SHA256(material, salt `"bitwarden-send"`,
+  info `"send"`, 64 bytes). `key` = material encrypted with the user key; `name`, `notes`,
+  `text.text`, `file.fileName` are EncStrings under the Send key.
+- Password: `password` = base64(PBKDF2-SHA256(password, salt = material, 100 000, 32 bytes)).
+  The server hashes it again; a PUT without `password` keeps the old one, removing it is
+  `PUT /api/sends/{id}/remove-password`.
+- Link: `<web vault>/#/send/<accessId>/<base64url material>`. The material is only in the fragment.
+- Text: `POST /api/sends`, `PUT /api/sends/{id}` (type can't change), `DELETE /api/sends/{id}`.
+  The server refuses a deletion date more than 31 days out.
+- File: `POST /api/sends/file/v2` with `fileLength` (the encrypted size) returns
+  `{url, fileUploadType: 0, sendResponse}`; then a multipart `POST` of the EncArrayBuffer to `url`
+  as part `data`, **with the encrypted file name as the part's filename** (Vaultwarden checks it;
+  attachments don't care).
+- Recipient (legacy API, what Keyward's tests use): `POST /api/sends/access/{accessId}`
+  `{password?}`, then for a file `POST /api/sends/{id}/access/file/{fileId}` → `{url}`.
+  `bw` 2026.6 uses the newer send-access token flow instead, which Vaultwarden 1.37.2 also serves;
+  `bw` caches that token per Send, so a wrong password after a right one still opens it.
+- `bw send receive --password` doesn't work: the parent `send` command takes `--password` for
+  itself. Use `bw receive <url> --password …`.
 
 ## Passkeys (`login.fido2Credentials`)
 

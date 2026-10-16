@@ -1,4 +1,5 @@
 // Typed request/response messaging between pages, content scripts and the background.
+import type { SendDraft } from "../core/send/send.ts";
 import type { CipherView, Summary } from "../core/vault/types.ts";
 
 export interface SyncStatus {
@@ -40,6 +41,11 @@ export interface RpcMap {
   "vault.favorite": [{ accountId?: string; id: string; favorite: boolean }, void];
   "folder.save": [{ accountId?: string; id?: string | null; name: string }, { id: string }];
   "folder.delete": [{ accountId?: string; id: string }, void];
+  /** password: a new one, or null/absent to keep the current one */
+  "send.save": [{ accountId?: string; draft: SendDraft; password?: string | null }, { id: string; accessId: string }];
+  "send.delete": [{ accountId?: string; id: string }, void];
+  "send.removePassword": [{ accountId?: string; id: string }, void];
+  "send.refetch": [{ accountId?: string; id: string }, void];
   // autofill
   "autofill.pageMatches": [{ tabId?: number; url?: string }, { url: string; host: string; tabId?: number; matches: PageMatch[] }];
   "autofill.fill": [{ tabId: number; itemId: string; force?: boolean; verified?: boolean }, { filled: boolean; totpCopied?: boolean; error?: string; confirm?: string; reprompt?: boolean }];
@@ -140,6 +146,7 @@ export type PasskeyCtx =
 /** Fan-out of "something changed" notices to every open extension page. */
 export type Broadcast =
   | { kind: "vault"; accountId: string; ids?: string[]; full?: boolean }
+  | { kind: "sends"; accountId: string }
   | { kind: "lock"; accountId: string | null }
   | { kind: "accounts" }
   | { kind: "sync"; accountId: string; status: SyncStatus }
