@@ -4,6 +4,7 @@
 import { decryptBytes, decryptString, encryptBytes, encryptString, EncStringError } from "../crypto/encstring.ts";
 import { unwrapItemKey, wrapItemKey } from "../crypto/keys.ts";
 import { sha256 } from "../crypto/primitives.ts";
+import { completeSshKey } from "../ssh/keys.ts";
 import { SymKey } from "../crypto/symkey.ts";
 import { equalBytes, toB64 } from "../util/bytes.ts";
 import {
@@ -318,10 +319,12 @@ export async function encryptCipher(v: CipherView, ring: KeyRing, opts: EncryptO
   } else if (v.type === CipherType.Identity && v.identity) {
     body.identity = Object.fromEntries(await Promise.all(IDENTITY_FIELDS.map(async (f) => [f, await e(v.identity![f])])));
   } else if (v.type === CipherType.SshKey && v.sshKey) {
+    // All three or nothing: Vaultwarden silently drops an sshKey with a null field.
+    const k = await completeSshKey(v.sshKey);
     body.sshKey = {
-      privateKey: await e(v.sshKey.privateKey),
-      publicKey: await e(v.sshKey.publicKey),
-      keyFingerprint: await e(v.sshKey.keyFingerprint),
+      privateKey: await encryptString(k.privateKey, key),
+      publicKey: await encryptString(k.publicKey, key),
+      keyFingerprint: await encryptString(k.keyFingerprint, key),
     };
   } else if (v.type === CipherType.SecureNote) {
     body.secureNote = { type: 0 };

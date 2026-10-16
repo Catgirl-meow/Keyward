@@ -121,6 +121,29 @@ export async function describeOpenSshPrivateKey(pem: string): Promise<{ publicKe
   return { publicKey: publicKeyLine({ ...k, comment: "" }), fingerprint: await fingerprint(k.publicBlob), type: k.type };
 }
 
+/**
+ * An SSH key item's three fields with the missing ones derived from the others: the public key
+ * and fingerprint from an OpenSSH private key, the fingerprint from a public key line. What
+ * can't be derived is "" (Vaultwarden drops the whole key when any field is null).
+ */
+export async function completeSshKey(k: { privateKey: string | null; publicKey: string | null; keyFingerprint: string | null }): Promise<{ privateKey: string; publicKey: string; keyFingerprint: string }> {
+  let { publicKey, keyFingerprint } = k;
+  if ((!publicKey || !keyFingerprint) && k.privateKey) {
+    const d = await describeOpenSshPrivateKey(k.privateKey).catch(() => null);
+    publicKey ||= d?.publicKey ?? null;
+    keyFingerprint ||= d?.fingerprint ?? null;
+  }
+  const blob = publicKey?.trim().split(/\s+/)[1];
+  if (!keyFingerprint && blob) {
+    try {
+      keyFingerprint = await fingerprint(fromB64(blob));
+    } catch {
+      // not base64: leave it empty
+    }
+  }
+  return { privateKey: k.privateKey ?? "", publicKey: publicKey ?? "", keyFingerprint: keyFingerprint ?? "" };
+}
+
 function wrapPem(body: Uint8Array): string {
   const b = toB64(body).replace(/(.{70})/g, "$1\n").replace(/\n$/, "");
   return `-----BEGIN OPENSSH PRIVATE KEY-----\n${b}\n-----END OPENSSH PRIVATE KEY-----\n`;
