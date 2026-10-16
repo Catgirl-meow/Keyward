@@ -101,3 +101,14 @@ export { default as lockReset } from "icon:lock_reset";
 export { default as apartment } from "icon:apartment";
 export { default as numbers } from "icon:numbers";
 export { default as arrowUp } from "icon:arrow_upward";
+// Watchtower
+export { default as dataAlert } from "icon:data_alert";
+export { default as repeat } from "icon:repeat";
+export { default as noEncryption } from "icon:no_encryption";
+export { default as copyAll } from "icon:copy_all";
+export { default as unknownDoc } from "icon:unknown_document";
+export { default as draft } from "icon:draft";
+export { default as eventBusy } from "icon:event_busy";
+export { default as keyOff } from "icon:key_off";
+export { default as health } from "icon:health_and_safety";
+export { default as mobileLock } from "icon:mobile_lock_portrait";

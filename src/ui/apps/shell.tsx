@@ -50,6 +50,9 @@ const RepromptSheet = lazy(() => import("../screens/item-view.tsx").then((m) => 
 const settingsMod = () => import("../screens/settings.tsx");
 const SettingsScreen = lazy(() => settingsMod().then((m) => m.SettingsScreen));
 const SettingsPage = lazy(() => settingsMod().then((m) => m.SettingsPage));
+const watchtowerMod = () => import("../screens/watchtower.tsx");
+const WatchtowerScreen = lazy(() => watchtowerMod().then((m) => m.WatchtowerScreen));
+const WatchList = lazy(() => watchtowerMod().then((m) => m.WatchList));
 
 export type Mode = "popup" | "tab";
 
@@ -57,7 +60,7 @@ const NAV: { id: Tab; label: string; icon: string; iconOn: string }[] = [
   { id: "vault", label: "Vault", icon: I.home, iconOn: I.homeFill },
   { id: "generator", label: "Generator", icon: I.password, iconOn: I.password },
   { id: "send", label: "Send", icon: I.send, iconOn: I.send },
-  { id: "watchtower", label: "Watchtower", icon: I.shield, iconOn: I.shield },
+  { id: "watchtower", label: "Watchtower", icon: I.shield, iconOn: I.shieldFill },
   { id: "settings", label: "Settings", icon: I.settings, iconOn: I.settings },
 ];
 
@@ -146,7 +149,7 @@ function tabRoot(t: Tab, mode: Mode, pm: ReturnType<typeof usePageMatches>, fill
     case "send":
       return <Placeholder title="Send" text="Share text and files with end-to-end encryption. Coming in a later build." />;
     case "watchtower":
-      return <Placeholder title="Watchtower" text="Password health checks. Coming in a later build." />;
+      return <WatchtowerScreen />;
     case "settings":
       return <SettingsScreen />;
   }
@@ -164,6 +167,8 @@ function routeView(r: Route, embedded: boolean, fill?: (id: string, verified?: b
       return <SettingsPage page={r.page} />;
     case "folders":
       return <SettingsPage page="folders" />;
+    case "watch-list":
+      return <WatchList check={r.check} />;
     default:
       return null;
   }
@@ -178,7 +183,7 @@ function Animated({ k, children }: { k: string; children: ComponentChildren }) {
 }
 
 function routeKey(r: Route, depth: number): string {
-  return `${depth}:${r.name}:${"id" in r ? r.id ?? "" : ""}:${"page" in r ? r.page : ""}`;
+  return `${depth}:${r.name}:${"id" in r ? r.id ?? "" : ""}:${"page" in r ? r.page : ""}:${"check" in r ? r.check : ""}`;
 }
 
 // ---------------------------------------------------------------- main layouts
@@ -349,7 +354,7 @@ export async function mount(mode: Mode) {
   void UnlockScreen.preload();
   await booting;
   void ItemView.preload();
-  setTimeout(() => [ItemEdit, GeneratorScreen, SettingsScreen].forEach((c) => void c.preload()), 50);
+  setTimeout(() => [ItemEdit, GeneratorScreen, SettingsScreen, WatchtowerScreen].forEach((c) => void c.preload()), 50);
   if (await loadPending()) addingAccount.value = phase.value !== "login";
   // "Check on open": the background pushes the lock deadline and runs a cheap revision-date
   // check; a full sync happens only if something changed.

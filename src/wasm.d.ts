@@ -19,3 +19,8 @@ declare module "*.txt" {
   const text: string;
   export default text;
 }
+// zxcvbn-ts word lists, imported one by one so the large ones (surnames, Wikipedia) stay out.
+declare module "@zxcvbn-ts/language-en/dist/*.json.mjs" {
+  const words: any;
+  export default words;
+}
