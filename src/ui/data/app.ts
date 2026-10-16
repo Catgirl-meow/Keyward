@@ -9,7 +9,7 @@ import { loadAccounts, saveAccounts, type Account, type AccountsState } from "..
 import { listen, rpc, type SyncStatus } from "../../platform/messages.ts";
 import { getCacheKey, getRing, setUnlocked } from "../../platform/session.ts";
 import { SymKey } from "../../core/crypto/symkey.ts";
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from "../../platform/settings.ts";
+import { DEFAULT_SETTINGS, loadSettings, LockTimeout, saveSettings, type Settings } from "../../platform/settings.ts";
 import { local, onChanged, session } from "../../platform/storage.ts";
 import { applyTheme, watchSystemTheme } from "../theme/theme.ts";
 
@@ -85,7 +85,8 @@ export async function refreshPhase(): Promise<void> {
     // "Never lock": after a browser restart the key is on disk; unlock through the background
     // (org keys, alarms, sync) exactly as a password unlock would.
     const persisted = await local.get<string>(`persistKey:${a.id}`);
-    if (persisted) {
+    // Only while the timeout is still "Never": a leftover key is the background's to drop.
+    if (persisted && (await loadSettings()).lockTimeout === LockTimeout.Never) {
       // Put the key in session storage here, so the list doesn't wait for the service worker to
       // start; the background then derives org keys, sets alarms and syncs on its own time.
       await setUnlocked(a.id, { user: SymKey.fromB64(persisted), orgs: new Map() });

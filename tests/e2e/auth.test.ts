@@ -171,8 +171,12 @@ describe(`auth (${target})`, () => {
     await page.waitForSelector(".vault-list", { timeout: 15_000 });
     // Back to the default so later runs start locked.
     await page.evaluate(`chrome.storage.local.get("settings").then(({ settings }) => chrome.storage.local.set({ settings: { ...settings, lockTimeout: -1 } }))`);
-    await new Promise((r) => setTimeout(r, 300));
-    const persisted = await page.evaluate(`chrome.storage.local.get(null).then((all) => Object.keys(all).filter((k) => k.startsWith("persistKey:")).length)`);
+    // Leaving "Never" drops the keys once the unlocks still writing them are done: poll, don't sleep.
+    let persisted = -1;
+    for (const end = Date.now() + 10_000; Date.now() < end; await new Promise((r) => setTimeout(r, 200))) {
+      persisted = (await page.evaluate(`chrome.storage.local.get(null).then((all) => Object.keys(all).filter((k) => k.startsWith("persistKey:")).length)`)) as number;
+      if (persisted === 0) break;
+    }
     assert.equal(persisted, 0, "persisted key left behind after leaving 'Never'");
   });
 

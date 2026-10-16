@@ -63,14 +63,45 @@ export async function onLockAlarm(accountId: string): Promise<void> {
   else await lock(accountId);
 }
 
-export async function applyNeverLock(accountId: string, ring: import("../core/vault/cipher.ts").KeyRing | null): Promise<void> {
-  const settings = await loadSettings();
-  await persistUserKey(accountId, settings.lockTimeout === LockTimeout.Never ? ring : null);
+// Every "never lock" key write goes through one queue. Unqueued, an unlock that read "Never"
+// could write its key after a settings change to another timeout had already removed it.
+let neverLockQueue: Promise<unknown> = Promise.resolve();
+function queueNeverLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = neverLockQueue.then(fn);
+  neverLockQueue = run.catch(() => {});
+  return run;
+}
+
+export function applyNeverLock(accountId: string, ring: import("../core/vault/cipher.ts").KeyRing | null): Promise<void> {
+  // Settings are read inside the queue: a change written before this runs is seen here, and the
+  // storage event of a later one queues its onSettingsChanged behind this.
+  return queueNeverLock(async () => {
+    const settings = await loadSettings();
+    if (settings.lockTimeout !== LockTimeout.Never) return dropNeverLockKeys();
+    await persistUserKey(accountId, ring && (await isUnlocked(accountId)) ? ring : null);
+  });
+}
+
+/** Not "never" any more: drop every account's kept key. */
+export function forgetNeverLock(): Promise<void> {
+  return queueNeverLock(dropNeverLockKeys);
+}
+
+// Every account, not only the one at hand: a worker that is still starting after a browser restart
+// can miss the storage event of leaving "never", which would leave the other accounts' keys behind.
+async function dropNeverLockKeys(): Promise<void> {
+  for (const a of (await loadAccounts()).list) await persistUserKey(a.id, null);
 }
 
 /** Settings changed: re-apply "never lock" persistence and reset the lock deadline. */
 export async function onSettingsChanged(oldTimeout: number | undefined, newTimeout: number): Promise<void> {
   if (oldTimeout === newTimeout) return;
+  await queueNeverLock(() => reapplyNeverLock(newTimeout));
+  lastActivity = 0;
+  await activity();
+}
+
+async function reapplyNeverLock(newTimeout: number): Promise<void> {
   const s = await loadAccounts();
   for (const a of s.list) {
     // Leaving "never": drop every kept key, locked accounts included. Entering it: keep the keys
@@ -82,6 +113,4 @@ export async function onSettingsChanged(oldTimeout: number | undefined, newTimeo
     }
     await chrome.alarms.clear(`lock:${a.id}`);
   }
-  lastActivity = 0;
-  await activity();
 }

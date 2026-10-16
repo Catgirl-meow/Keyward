@@ -8,7 +8,7 @@ import { loadSettings, LockTimeout } from "../platform/settings.ts";
 import { local } from "../platform/storage.ts";
 import { copy, onClearAlarm, scheduleClear } from "./clipboard.ts";
 import { refreshIcon } from "./icon.ts";
-import { activity, applyNeverLock, lock, logout, onLockAlarm, onSettingsChanged } from "./lock.ts";
+import { activity, applyNeverLock, forgetNeverLock, lock, logout, onLockAlarm, onSettingsChanged } from "./lock.ts";
 import { syncAccount } from "./sync.ts";
 import { ctx, setRestoreHook } from "./ctx.ts";
 import { deriveOrgKeys } from "../core/sync/sync.ts";
@@ -92,6 +92,11 @@ chrome.alarms.onAlarm.addListener(async (a) => {
 async function restoreNeverLock(accountId: string): Promise<boolean> {
   const key = await local.get<string>(`persistKey:${accountId}`);
   if (!key || (await local.get(`needsLogin:${accountId}`))) return false;
+  // A key left behind after leaving "never" (see forgetNeverLock) must not unlock anything.
+  if ((await loadSettings()).lockTimeout !== LockTimeout.Never) {
+    await forgetNeverLock();
+    return false;
+  }
   await afterUnlock(accountId, key, false);
   return true;
 }
