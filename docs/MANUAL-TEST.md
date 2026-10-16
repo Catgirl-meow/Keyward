@@ -49,6 +49,13 @@ happened.
 - [ ] **mailfence.com**: log in with the inline menu or Ctrl+Shift+L. On the two-step page that
       follows, Keyward fills the six code boxes from the same item, or copies the code if it
       can't fill them.
+- [ ] Shortcuts: Settings → Autofill lists the keys Keyward actually has. A browser gives a key
+      to the first extension that asks, so with the official Bitwarden extension installed,
+      Ctrl+Shift+L may be Bitwarden's; Settings then says so and **Change shortcuts** opens the
+      browser's shortcut page.
+- [ ] **Fill on page load** (Settings → Autofill, off by default): on a site with exactly one
+      login, the form fills by itself, also when the page draws it late (Proxmox) or after an
+      in-page navigation (Monkeytype).
 - [ ] Your usual sites, in a list you keep:
 
   | Site | Login page fills | Two-step code | Notes |
@@ -60,7 +67,8 @@ happened.
 - [ ] A login inside a frame (some banks, Microsoft and Google embeds): Keyward asks before
       filling a frame from another site.
 - [ ] The inline menu opens from the key icon in the field or with the ↓ key, and never covers
-      the page's own controls.
+      the page's own controls. Clicking a login in it fills (also on a screen with scaling),
+      and it follows the dark theme in LibreWolf too.
 - [ ] Save prompt: sign up or log in somewhere new. Keyward offers to save once, after the page
       moves on, and never while you are still typing.
 - [ ] Update prompt: change a password on a site. Keyward offers to update the existing item.
@@ -81,9 +89,15 @@ happened.
 
 - [ ] Create a text Send with a password. Open the link in a private window, enter the password
       and check the text.
-- [ ] Create a file Send and download it from the link.
-- [ ] Watchtower: the local checks run as soon as it opens. The breach check (Have I Been Pwned)
-      and the two-step check (2fa.directory) run only when you start them.
+- [ ] Create a file Send and download it from the link. In the popup, **Choose a file** moves
+      the Send to the full tab (a file dialog would close the popup) with what you typed kept;
+      pick the file there.
+- [ ] Popup closes mid-edit: start a new item, switch to another window (the popup closes),
+      open Keyward again. The form is back as you left it. Locking throws it away.
+- [ ] Watchtower: the local checks run as soon as it opens, and the popup stays responsive
+      while they run. The breach check (Have I Been Pwned) and the two-step check
+      (2fa.directory) run only when you start them. **Duplicate websites** lists logins with
+      two websites where one already covers the other.
 - [ ] Generator: a password, a passphrase, and a forwarded alias if you use SimpleLogin or
       addy.io.
 
