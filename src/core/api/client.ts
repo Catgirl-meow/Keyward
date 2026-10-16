@@ -50,8 +50,8 @@ export class ApiError extends Error {
 }
 
 export class OfflineError extends Error {
-  constructor(cause: unknown) {
-    super("Server unreachable");
+  constructor(cause: unknown, message = "Server unreachable") {
+    super(message);
     this.name = "OfflineError";
     this.cause = cause;
   }
@@ -71,6 +71,11 @@ export function errorMessage(body: any, status: number): string {
 
 type Base = "api" | "identity" | "abs";
 
+/** A server that accepts the connection but never answers would otherwise hold a sync, save or
+ * login (and every vault write queued behind it) until the browser gives up, which can take many
+ * minutes. Generous enough for a big /sync body on a slow link. */
+export const REQUEST_TIMEOUT_MS = 60_000;
+
 export interface RequestOpts {
   base?: Base;
   auth?: boolean;
@@ -78,6 +83,8 @@ export interface RequestOpts {
   raw?: boolean; // return the Response untouched (downloads)
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  /** ms for the whole exchange, body included (for `raw`, only until the headers); 0 = no limit. */
+  timeout?: number;
 }
 
 export class Api {
@@ -108,12 +115,33 @@ export class Api {
     return (base === "api" ? this.urls.api : this.urls.identity) + path;
   }
 
-  async #fetch(url: string, init: RequestInit): Promise<Response> {
+  /** One exchange: send, wait for the answer, read its body (a raw success's body is the caller's
+   * to read). A network failure or no answer within `timeout` ms is an OfflineError; the caller's
+   * own abort passes through. The timer races the fetch rather than trusting the abort alone. */
+  async #fetch(url: string, init: RequestInit, raw = false, timeout = REQUEST_TIMEOUT_MS): Promise<{ res: Response; body: any }> {
+    const ctl = new AbortController();
+    const signal = init.signal ? AbortSignal.any([init.signal, ctl.signal]) : ctl.signal;
+    const exchange = (async () => {
+      try {
+        const res = await this.fetchImpl(url, { cache: "no-store", credentials: "omit", ...init, signal });
+        return { res, body: raw && res.ok ? null : await readBody(res) };
+      } catch (e) {
+        if ((e as Error)?.name === "AbortError" && !ctl.signal.aborted) throw e;
+        throw new OfflineError(e);
+      }
+    })();
+    if (timeout <= 0) return exchange;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        ctl.abort();
+        reject(new OfflineError(null, `Server didn't respond in ${Math.round(timeout / 1000)} s`));
+      }, timeout);
+    });
     try {
-      return await this.fetchImpl(url, { cache: "no-store", credentials: "omit", ...init });
-    } catch (e) {
-      if ((e as Error)?.name === "AbortError") throw e;
-      throw new OfflineError(e);
+      return await Promise.race([exchange, expired]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -128,12 +156,11 @@ export class Api {
 
   async #refresh(t: Tokens): Promise<Tokens> {
     const clientId = decodeJwt(t.accessToken)?.client_id ?? "browser";
-    const res = await this.#fetch(this.url("/connect/token", "identity"), {
+    const { res, body } = await this.#fetch(this.url("/connect/token", "identity"), {
       method: "POST",
       headers: { ...this.baseHeaders(), "Content-Type": "application/x-www-form-urlencoded; charset=utf-8" },
       body: new URLSearchParams({ grant_type: "refresh_token", client_id: clientId, refresh_token: t.refreshToken }),
     });
-    const body = await readBody(res);
     if (!res.ok) {
       const err = new ApiError(res.status, errorMessage(body, res.status), body);
       if (res.status === 400 || res.status === 401) await this.tokens!.set(null);
@@ -158,17 +185,12 @@ export class Api {
         headers["Content-Type"] = "application/json; charset=utf-8";
         payload = JSON.stringify(body);
       }
-      return this.#fetch(this.url(path, opts.base), { method, headers, body: payload, signal: opts.signal });
+      return this.#fetch(this.url(path, opts.base), { method, headers, body: payload, signal: opts.signal }, opts.raw, opts.timeout);
     };
-    let res = await doFetch(false);
-    if (res.status === 401 && auth) res = await doFetch(true);
-    if (opts.raw) {
-      if (!res.ok) throw new ApiError(res.status, errorMessage(await readBody(res), res.status), null);
-      return res as T;
-    }
-    const data = await readBody(res);
-    if (!res.ok) throw new ApiError(res.status, errorMessage(data, res.status), data);
-    return data as T;
+    let { res, body: data } = await doFetch(false);
+    if (res.status === 401 && auth) ({ res, body: data } = await doFetch(true));
+    if (!res.ok) throw new ApiError(res.status, errorMessage(data, res.status), opts.raw ? null : data);
+    return (opts.raw ? res : data) as T;
   }
 
   get<T = any>(path: string, opts?: RequestOpts) {
@@ -186,12 +208,12 @@ export class Api {
 
   /** Identity token endpoint: returns status + body without throwing (400 carries 2FA data). */
   async identityToken(form: Record<string, string>): Promise<{ status: number; body: any }> {
-    const res = await this.#fetch(this.url("/connect/token", "identity"), {
+    const { res, body } = await this.#fetch(this.url("/connect/token", "identity"), {
       method: "POST",
       headers: { ...this.baseHeaders(), "Content-Type": "application/x-www-form-urlencoded; charset=utf-8" },
       body: new URLSearchParams(form),
     });
-    return { status: res.status, body: await readBody(res) };
+    return { status: res.status, body };
   }
 }
 

@@ -18,6 +18,7 @@ export async function fetchAttachment(v: CipherView, a: AttachmentView): Promise
   const meta = await api.get(`/ciphers/${v.id}/attachment/${a.id}`).catch(() => null);
   const url = meta?.url ?? a.url;
   if (!url) throw new Error("No download URL");
+  // raw: the request timeout covers only the wait for the headers, never the transfer itself.
   const res = await api.request<Response>("GET", url, undefined, { base: "abs", raw: true, auth: !/token=/.test(url) });
   const enc = new Uint8Array(await res.arrayBuffer());
   const attKey = a.key ? new SymKey(await decryptBytes(meta?.key ?? a.key, key)) : key;
@@ -53,7 +54,9 @@ export async function uploadAttachment(v: CipherView, file: File): Promise<void>
   });
   const form = new FormData();
   form.append("data", new Blob([data]), "blob");
-  await api.request("POST", reg.url ?? `/ciphers/${v.id}/attachment/${reg.attachmentId}`, form, { base: reg.url?.startsWith("http") ? "abs" : "api" });
+  // No timeout: the server answers only after the whole file is in, which a big file on a slow
+  // uplink can take far longer than any limit that would still be useful.
+  await api.request("POST", reg.url ?? `/ciphers/${v.id}/attachment/${reg.attachmentId}`, form, { base: reg.url?.startsWith("http") ? "abs" : "api", timeout: 0 });
 }
 
 export async function deleteAttachment(v: CipherView, a: AttachmentView): Promise<void> {
