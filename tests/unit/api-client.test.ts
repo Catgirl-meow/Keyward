@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Api, OfflineError, REQUEST_TIMEOUT_MS, serverUrls, type Tokens } from "../../src/core/api/client.ts";
+import { Api, errorMessage, OfflineError, REQUEST_TIMEOUT_MS, serverUrls, type Tokens } from "../../src/core/api/client.ts";
 
 const CLIENT = { deviceType: 2, deviceName: "test", deviceId: "dev", clientVersion: "test" };
 
@@ -128,5 +128,22 @@ describe("api client timeout", () => {
     const err = await api.get("/sync").catch((e) => e);
     expect(err).toBeInstanceOf(OfflineError);
     expect(err.message).toBe("Server unreachable");
+  });
+});
+
+describe("errorMessage", () => {
+  it("reads Rocket's error page instead of showing [object Object]", () => {
+    const body = { error: { code: 422, reason: "Unprocessable Entity", description: "The request was well-formed but was unable to be followed due to semantic errors." } };
+    expect(errorMessage(body, 422)).toBe("The server rejected the request: Unprocessable Entity (HTTP 422)");
+  });
+  it("prefers the Bitwarden error model's message", () => {
+    expect(errorMessage({ message: "The model state is invalid.", validationErrors: { "": ["Invalid user cipher"] }, object: "error" }, 400)).toBe("Invalid user cipher");
+    expect(errorMessage({ error: "invalid_grant", error_description: "Username or password is incorrect." }, 400)).toBe("Username or password is incorrect.");
+  });
+  it("explains a rate limit (a proxy's HTML page or the server's)", () => {
+    expect(errorMessage("<html>429 Too Many Requests</html>", 429)).toMatch(/^Too many requests/);
+  });
+  it("never returns a non-string", () => {
+    expect(errorMessage({ validationErrors: { a: [{ x: 1 }] } }, 400)).toBe("HTTP 400");
   });
 });

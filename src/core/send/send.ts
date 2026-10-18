@@ -180,7 +180,7 @@ export function sendStatus(s: SendView, now = Date.now()): { open: boolean; labe
   return { open: true, label: `Deletes in ${left(s.deletionDate)}` };
 }
 
-/** What a recipient sees: POST /sends/access/{accessId} decrypted with the link's material. */
+/** What a recipient sees: POST /api/sends/access (with a send-access token) decrypted with the link's material. */
 export async function decryptSendAccess(raw: { type: number; name: string; text?: { text?: string | null; hidden?: boolean } | null; file?: { id?: string; fileName?: string | null; size?: number | string; sizeName?: string } | null; expirationDate?: string | null; creatorIdentifier?: string | null }, material: Uint8Array) {
   const key = await sendKey(material);
   return {

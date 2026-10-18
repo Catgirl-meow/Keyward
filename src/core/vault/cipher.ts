@@ -252,6 +252,9 @@ export interface EncryptOpts {
   base?: RawCipher | null;
   /** Generate a per-item key for new items (official clients do this for servers ≥ 2024.2). */
   useItemKey?: boolean;
+  /** The user id the item is encrypted by. Vaultwarden 1.37.4 and later reject a write without
+   * it ("encryptedFor", sent by the official clients since web 2025.6); older servers ignore it. */
+  encryptedFor?: string;
 }
 
 export async function encryptCipher(v: CipherView, ring: KeyRing, opts: EncryptOpts = {}): Promise<{ body: Record<string, any>; key: SymKey }> {
@@ -282,6 +285,7 @@ export async function encryptCipher(v: CipherView, ring: KeyRing, opts: EncryptO
     reprompt: v.reprompt,
     key: wrappedKey,
     lastKnownRevisionDate: base?.revisionDate ?? null,
+    encryptedFor: opts.encryptedFor ?? null,
     archivedDate: v.archivedDate,
     login: null,
     card: null,

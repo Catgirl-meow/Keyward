@@ -58,15 +58,21 @@ export class OfflineError extends Error {
 }
 
 export function errorMessage(body: any, status: number): string {
+  if (status === 429) return "Too many requests: the server is rate limiting this device. Wait a moment and try again.";
   if (!body) return `HTTP ${status}`;
   if (typeof body === "string") return body.slice(0, 300) || `HTTP ${status}`;
   const em = body.errorModel ?? body;
   const ve = em.validationErrors;
   if (ve && typeof ve === "object") {
     const first = Object.values(ve).flat()[0];
-    if (first) return String(first);
+    if (typeof first === "string" && first) return first;
   }
-  return em.message || body.error_description || body.error || `HTTP ${status}`;
+  // Rocket's own error pages (a request body it couldn't parse, an unknown route) answer
+  // {"error": {"code", "reason", "description"}}.
+  const rocket = typeof body.error === "object" && body.error ? body.error : null;
+  if (rocket) return `The server rejected the request: ${rocket.reason ?? "error"} (HTTP ${rocket.code ?? status})`;
+  const text = [em.message, body.error_description, body.error].find((t) => typeof t === "string" && t);
+  return text ?? `HTTP ${status}`;
 }
 
 type Base = "api" | "identity" | "abs";

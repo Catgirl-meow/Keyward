@@ -56,7 +56,9 @@ describe(`webauthn 2fa (${target})`, { skip: target !== "chromium" && "virtual a
 
     // 1. Register a key on the account from a page on the server origin.
     const reg = await kw.browser.newPage();
-    await reg.goto(env.KW_SERVER + "/404.html");
+    // A fresh Helium profile cancels pages opened about 1–2 s after launch (its own startup work,
+    // not Keyward's: it happens while Keyward is locked and idle); register() above lands there.
+    await reg.goto(env.KW_SERVER + "/404.html").catch(() => reg.goto(env.KW_SERVER + "/404.html"));
     const regCdp = await reg.createCDPSession();
     const authId = await virtualKey(regCdp);
     await enableWebauthn(s, pw, (o) => createInPage(reg, o));

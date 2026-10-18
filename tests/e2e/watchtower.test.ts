@@ -244,7 +244,7 @@ describe(`watchtower (${target})`, () => {
       const v = await decryptCipher(raw, api.ring);
       if (v.name !== "Plain http") continue;
       const fixed = { ...v, login: { ...v.login!, uris: [{ uri: "https://plain.example/login", match: null }] } };
-      await api.api.put(`/ciphers/${raw.id}`, (await encryptCipher(fixed, api.ring, { base: raw })).body);
+      await api.api.put(`/ciphers/${raw.id}`, (await encryptCipher(fixed, api.ring, { base: raw, encryptedFor: api.login.userId })).body);
     }
     await clickText(kw, page, "Vault", "nav button");
     await click(kw, page, 'button[aria-label="Account and vault menu"]');

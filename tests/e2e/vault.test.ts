@@ -184,7 +184,7 @@ describe(`vault writes (${target})`, () => {
     const raw = data.raw.find((r: any) => data.views.find((v) => v.id === r.id)?.name === "Created in Keyward");
     const theirs = { ...(await decryptCipher(raw, api.ring)) };
     theirs.login = { ...theirs.login!, username: "changed-elsewhere" };
-    const { body } = await encryptCipher(theirs, api.ring, { base: raw });
+    const { body } = await encryptCipher(theirs, api.ring, { base: raw, encryptedFor: api.login.userId });
     await new Promise((r) => setTimeout(r, 1100)); // revision dates have 1 s resolution in some servers
     await api.api.put(`/ciphers/${raw.id}`, body);
     // Our edit, based on the stale copy.
@@ -200,7 +200,7 @@ describe(`vault writes (${target})`, () => {
   test("a change made on the server shows up after sync", async () => {
     const v = await byName("Test card");
     const raw = (await serverItems()).raw.find((r: any) => r.id === v!.id);
-    const { body } = await encryptCipher({ ...v!, name: "Renamed on server" }, api.ring, { base: raw });
+    const { body } = await encryptCipher({ ...v!, name: "Renamed on server" }, api.ring, { base: raw, encryptedFor: api.login.userId });
     await api.api.put(`/ciphers/${v!.id}`, body);
     await click(kw, page, 'button[aria-label="Account and vault menu"]');
     await clickText(kw, page, "Sync now", '[role="menuitem"]');

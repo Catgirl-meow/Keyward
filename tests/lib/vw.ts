@@ -64,13 +64,27 @@ export async function register(email: string, password: string, kdf: Kdf = PBKDF
     kdfParallelism: kdf.parallelism,
     keys: { publicKey: toB64(publicSpki), encryptedPrivateKey: await encryptBytes(privatePkcs8, userKey) },
   };
-  for (const path of ["/identity/accounts/register", "/api/accounts/register"]) {
-    const r = await fetch(SERVER + path, { method: "POST", headers: { "Content-Type": "application/json", "Bitwarden-Client-Name": "web", "Bitwarden-Client-Version": "2026.9.3" }, body: JSON.stringify(body) });
-    if (r.status === 404) continue;
-    if (r.ok) return true;
+  const headers = { "Content-Type": "application/json", Accept: "application/json", "Bitwarden-Client-Name": "web", "Bitwarden-Client-Version": "2026.9.3" };
+  const post = (path: string, b: unknown) => fetch(SERVER + path, { method: "POST", headers, body: JSON.stringify(b) });
+  const failed = async (r: Response) => {
     const text = await r.text();
     if (/already exists|registration not allowed/i.test(text)) return false;
     throw new Error(`register ${email}: ${r.status} ${text.slice(0, 200)}`);
+  };
+  // Current flow (Vaultwarden 1.37.4 dropped /accounts/register): ask for a verification token,
+  // which a server without SIGNUPS_VERIFY hands back at once, then finish with it.
+  const v = await post("/identity/accounts/register/send-verification-email", { email, name });
+  if (v.status !== 404) {
+    if (!v.ok) return failed(v);
+    const raw = await v.text();
+    const token = raw.startsWith('"') ? JSON.parse(raw) : raw;
+    const r = await post("/identity/accounts/register/finish", { ...body, emailVerificationToken: token });
+    return r.ok ? true : failed(r);
+  }
+  for (const path of ["/identity/accounts/register", "/api/accounts/register"]) {
+    const r = await post(path, body);
+    if (r.status === 404) continue;
+    return r.ok ? true : failed(r);
   }
   throw new Error("no register endpoint");
 }
@@ -95,7 +109,7 @@ export async function login(email: string, password: string): Promise<Session> {
 export async function importItems(s: Session, items: (CipherView & { folder?: string })[], folders: string[] = []): Promise<void> {
   for (let i = 0; i < items.length; i += 500) {
     const chunk = items.slice(i, i + 500);
-    const ciphers = await Promise.all(chunk.map(async (v) => (await encryptCipher(v, s.ring, { useItemKey: true })).body));
+    const ciphers = await Promise.all(chunk.map(async (v) => (await encryptCipher(v, s.ring, { useItemKey: true, encryptedFor: s.login.userId })).body));
     const folderRelationships = chunk.flatMap((v, k) => (v.folder && folders.includes(v.folder) ? [{ key: k, value: folders.indexOf(v.folder) }] : []));
     await s.api.post("/ciphers/import", {
       ciphers,
@@ -187,6 +201,6 @@ export async function createOrg(s: Session, name: string, collection = "Shared")
 }
 
 export async function createOrgItem(s: Session, v: CipherView, orgId: string, collectionIds: string[]): Promise<any> {
-  const { body } = await encryptCipher({ ...v, organizationId: orgId }, s.ring, { useItemKey: true });
+  const { body } = await encryptCipher({ ...v, organizationId: orgId }, s.ring, { useItemKey: true, encryptedFor: s.login.userId });
   return s.api.post("/ciphers/create", { cipher: body, collectionIds });
 }

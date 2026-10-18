@@ -1,12 +1,12 @@
 #!/bin/sh
-# Local test stack: Vaultwarden 1.37.2 + mailpit (SMTP sink for email 2FA) in one podman pod.
+# Local test stack: Vaultwarden 1.37.4 (as on pass.catg1rl.com) + mailpit (SMTP sink for email 2FA) in one podman pod.
 # Data lives on tmpfs, so every `up` starts from an empty server.
 #   scripts/dev-server.sh up | down | status | logs
 #   vault:   http://localhost:8087   (web vault included; WebAuthn RP ID = localhost)
 #   mailpit: http://localhost:8025   (API: /api/v1/messages)
 set -eu
 POD=keyward-dev
-VW_IMAGE=docker.io/vaultwarden/server:1.37.2
+VW_IMAGE=${VW_IMAGE:-docker.io/vaultwarden/server:1.37.4}
 MP_IMAGE=docker.io/axllent/mailpit:latest
 
 up() {

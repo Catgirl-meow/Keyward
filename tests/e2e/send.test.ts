@@ -6,7 +6,7 @@ import { after, before, describe, test as nodeTest } from "node:test";
 import type { Page } from "puppeteer-core";
 import { click, clickText, fill, login, sel, settle, waitForText } from "./flows.ts";
 import { launch, testEnv, type Keyward, type Target } from "./launch.ts";
-import { api as anonymousApi, login as apiLogin, randomPassword, register, sync, uniqueEmail, type Session } from "../lib/vw.ts";
+import { login as apiLogin, randomPassword, register, sync, uniqueEmail, type Session } from "../lib/vw.ts";
 import { decryptBuffer } from "../../src/core/crypto/encstring.ts";
 import { decryptSend, decryptSendAccess, encryptSend, inDays, parseSendLink, sendPasswordHash, SendType, type RawSend } from "../../src/core/send/send.ts";
 
@@ -45,17 +45,31 @@ const until = async <T>(fn: () => Promise<T | undefined | false>, ms = 10_000): 
   }
 };
 
-/** Opens a Send the way a recipient does: only the link and, if set, the password. */
+/**
+ * Opens a Send the way a recipient does: only the link and, if set, the password. The current
+ * flow (the only one since Vaultwarden 1.37.4): a send-access token from the identity endpoint,
+ * then the Send with that token.
+ */
 async function receive(link: string, pw?: string) {
   const p = parseSendLink(link);
   assert.ok(p, `not a Send link: ${link}`);
-  const anon = anonymousApi();
-  const raw = await anon.post(`/sends/access/${p.accessId}`, pw ? { password: await sendPasswordHash(pw, p.material) } : {}, { auth: false });
+  const server = env.KW_SERVER.replace(/\/$/, "");
+  const form = new URLSearchParams({ grant_type: "send_access", client_id: "send", scope: "api.send.access", send_id: p.accessId });
+  if (pw) form.set("password_hash_b64", await sendPasswordHash(pw, p.material));
+  const t = await fetch(`${server}/identity/connect/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
+  if (!t.ok) throw new Error(`send access token: ${t.status} ${(await t.text()).slice(0, 200)}`);
+  const headers = { Authorization: `Bearer ${(await t.json()).access_token}`, "Content-Type": "application/json" };
+  const call = async (path: string) => {
+    const r = await fetch(`${server}/api${path}`, { method: "POST", headers, body: "{}" });
+    if (!r.ok) throw new Error(`${path}: ${r.status} ${(await r.text()).slice(0, 200)}`);
+    return r.json();
+  };
+  const raw = await call("/sends/access");
   const seen = await decryptSendAccess(raw, p.material);
   let bytes: Uint8Array | null = null;
   if (seen.file) {
-    const dl = await anon.post(`/sends/${raw.id}/access/file/${seen.file.id}`, pw ? { password: await sendPasswordHash(pw, p.material) } : {}, { auth: false });
-    const res = await anon.request<Response>("GET", dl.url, undefined, { base: "abs", raw: true, auth: false });
+    const dl = await call(`/sends/access/file/${seen.file.id}`);
+    const res = await fetch(new URL(dl.url, server + "/"));
     bytes = await decryptBuffer(new Uint8Array(await res.arrayBuffer()), seen.key);
   }
   return { ...seen, bytes };

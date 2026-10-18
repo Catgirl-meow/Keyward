@@ -1,6 +1,7 @@
 # Bitwarden / Vaultwarden protocol notes
 
-What Keyward implements, as verified against Vaultwarden 1.37.2 (server reports web-vault 2026.6.0).
+What Keyward implements, as verified against Vaultwarden 1.37.2 and 1.37.4 (both report web-vault 2026.6.0;
+the local test server runs 1.37.4, the version on pass.catg1rl.com since 2026-10-17).
 
 ## Headers
 
@@ -38,6 +39,10 @@ features on the client version; keep it current).
 - Attachments v2: `POST /api/ciphers/{id}/attachment/v2` → upload URL; file bytes are an EncArrayBuffer
   `[type 1 B][iv 16][mac 32][ct]` under the attachment key (wrapped by the item key).
 - Send: see [Send](#send).
+- Item writes (`POST /api/ciphers`, `/ciphers/create`, `PUT /api/ciphers/{id}`, `/share`, `/ciphers/import`)
+  carry `encryptedFor` = the user id (JWT `sub`), also for organization items. Vaultwarden 1.37.4
+  made it a required field: without it every save fails with 422 before the handler runs (Rocket's
+  `{"error":{"code":422,...}}` body, not a Bitwarden error model). 1.37.2 ignores it.
 - SSH key items: Vaultwarden 1.37 silently drops the whole `sshKey` object if any of
   `privateKey`, `publicKey`, `keyFingerprint` is null. Keyward derives what it can and sends `""`
   (encrypted) for the rest.
@@ -74,10 +79,16 @@ Checked against Vaultwarden 1.37.2 and `bw` 2026.6 (tests/e2e/interop.test.ts).
   `{url, fileUploadType: 0, sendResponse}`; then a multipart `POST` of the EncArrayBuffer to `url`
   as part `data`, **with the encrypted file name as the part's filename** (Vaultwarden checks it;
   attachments don't care).
-- Recipient (legacy API, what Keyward's tests use): `POST /api/sends/access/{accessId}`
-  `{password?}`, then for a file `POST /api/sends/{id}/access/file/{fileId}` → `{url}`.
-  `bw` 2026.6 uses the newer send-access token flow instead, which Vaultwarden 1.37.2 also serves;
-  `bw` caches that token per Send, so a wrong password after a right one still opens it.
+- Recipient: `POST /identity/connect/token` (form) `grant_type=send_access, client_id=send,
+  scope=api.send.access, send_id=<accessId>, password_hash_b64?` → bearer token; then
+  `POST /api/sends/access` and, for a file, `POST /api/sends/access/file/{fileId}` → `{url}`.
+  Vaultwarden 1.37.4 removed the legacy `POST /api/sends/access/{accessId}` with `{password}`.
+  `bw` 2026.6 uses the token flow too, and caches the token per Send, so a wrong password after
+  a right one still opens it.
+- Registration (test helper only; Keyward doesn't sign up): 1.37.4 removed `/accounts/register`.
+  `POST /identity/accounts/register/send-verification-email` `{email, name}` returns a token at
+  once when `SIGNUPS_VERIFY` is off; `POST /identity/accounts/register/finish` takes it as
+  `emailVerificationToken`.
 - `bw send receive --password` doesn't work: the parent `send` command takes `--password` for
   itself. Use `bw receive <url> --password …`.
 

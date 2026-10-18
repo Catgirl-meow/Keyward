@@ -44,7 +44,7 @@ const handlers: Handlers = {
   async "vault.save"({ accountId, view, collectionIds }) {
     const c = await unlockedCtx(accountId);
     const base = view.id ? await c.db.getCipher(view.id) : null;
-    const { body } = await encryptCipher(view, c.ring, { base, useItemKey: true });
+    const { body } = await encryptCipher(view, c.ring, { base, useItemKey: true, encryptedFor: c.account.id });
     let raw: RawCipher;
     if (!view.id) {
       raw = view.organizationId
@@ -62,7 +62,7 @@ const handlers: Handlers = {
         if (!(e instanceof ApiError && /out of date/i.test(e.message))) throw e;
         await refetch(c, [view.id]);
         const copy = { ...view, id: "", name: `${view.name} (conflict copy)`, attachments: [] };
-        const enc = await encryptCipher(copy, c.ring, { useItemKey: true });
+        const enc = await encryptCipher(copy, c.ring, { useItemKey: true, encryptedFor: c.account.id });
         const made: RawCipher = copy.organizationId
           ? await c.api.post("/ciphers/create", { cipher: enc.body, collectionIds: collectionIds ?? view.collectionIds })
           : await c.api.post("/ciphers", enc.body);
@@ -159,7 +159,7 @@ export const importHandlers: Handlers = {
     for (let at = 0; at < items.length; at += IMPORT_CHUNK) {
       const chunk = items.slice(at, at + IMPORT_CHUNK);
       const ciphers = await Promise.all(
-        chunk.map(async (v) => (await encryptCipher({ ...v, id: "", folderId: null, organizationId: null, collectionIds: [], attachments: [] }, c.ring, { useItemKey: true })).body),
+        chunk.map(async (v) => (await encryptCipher({ ...v, id: "", folderId: null, organizationId: null, collectionIds: [], attachments: [] }, c.ring, { useItemKey: true, encryptedFor: c.account.id })).body),
       );
       const used = [...new Set(chunk.flatMap((_, i) => (folderOf.has(at + i) ? [folderOf.get(at + i)!] : [])))];
       const body = {
