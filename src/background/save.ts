@@ -27,6 +27,8 @@ interface Pending {
 }
 
 const KEEP_MS = 60_000;
+/** What a one-time code looks like (4 to 8 digits, spaces allowed). */
+const CODE = /^\s*(\d\s?){4,8}$/;
 const hostOf = (u: string) => parseUrl(u)?.hostname ?? "";
 const same = (a?: string | null, b?: string | null) => (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
 
@@ -123,6 +125,13 @@ async function decide(p: Pending): Promise<Pick<Pending, "kind" | "itemId" | "it
     if (target) return update(target);
   } else {
     const pw = type === "signup" ? newPassword : password;
+    // A one-time code typed into a box drawn as a password field (some banks' second step):
+    // never offer it as a new login, or as the new password of a login whose password isn't a
+    // number itself.
+    if (type === "login" && CODE.test(pw)) {
+      if (!username) return { kind: "none" };
+      if (sameUser.some((v) => v.login?.password && !CODE.test(v.login.password))) return { kind: "none" };
+    }
     if (sameUser.some((v) => v.login?.password === pw)) return { kind: "none" };
     if (!username && ok.some((v) => v.login?.password === pw)) return { kind: "none" };
     if (sameUser.length) return update(sameUser[0]);

@@ -120,3 +120,18 @@ describe("Russian labels", () => {
     expect(fieldKind($("#r"))).toBe("skip");
   });
 });
+
+describe("code boxes drawn as password fields", () => {
+  test.each([
+    ['<input type="password" name="f1" inputmode="numeric" maxlength="6">', "otp"],
+    ['<input type="password" name="f1" pattern="\\d{6}" maxlength="6">', "otp"],
+    ['<label for="x">One-time password</label><input type="password" id="x" maxlength="8">', "otp"],
+    ['<label for="x">SMS code</label><input type="password" id="x">', "otp"],
+    // A numeric PIN that is the account's password stays a password.
+    ['<label for="x">Password</label><input type="password" id="x" inputmode="numeric" maxlength="6">', "password"],
+    ['<input type="password" name="pin" maxlength="20">', "password"],
+  ])("%s → %s", (html, kind) => {
+    load(html);
+    expect(fieldKind($("input"))).toBe(kind);
+  });
+});

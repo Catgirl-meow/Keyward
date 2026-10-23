@@ -161,6 +161,8 @@ const RX = {
   recoveryCode: /\b(recovery|backup|scratch|rescue|emergency)[\s_-]?(code|key|token)|резервн[а-яё]* код|код[а-яё]* восстановлен/,
   newsletter: /newsletter|subscri|рассылк|подписк/,
   notOtp: /\b(postal|zip|post ?code|postcode|promo|coupon|voucher|discount|gift|country|area|referral|invite|invitation|captcha|cvv|cvc|csc|card)\b|индекс|промо|купон|карт/,
+  /** Words that make a code box a code box even when it says "password" ("one-time password"). */
+  otpStrong: /\b(otp|totp|hotp|one ?time|onetime|2fa|mfa|tfa|2 ?step|two ?(step|factor)|second ?factor|sms)\b|одноразов/,
   otp: /\b(otp|totp|hotp|2fa|mfa|tfa|one ?time|onetime|passcode|verification|verify|verif|authenticat\w*|auth ?code|security ?code|2 ?step|two ?(step|factor)|second ?factor|sms ?code|token|pin ?code|confirmation ?code|code|digits?)\b|код|одноразов/,
   password: /\b(pass(word|wd|phrase)?|pwd|pw)\b|password|пароль/,
   pwNew: /\b(new|create|choose|set|confirm|confirmation|repeat|retype|re ?type|re ?enter|again|verify|second|password ?2|pass ?2|pwd ?2)\b|нов|повтор|ещё раз|еще раз|подтвер|придума/,
@@ -237,7 +239,9 @@ export function fieldKind(el: Fillable, hint = hintOf(el)): Kind {
   const otpish = !RX.notOtp.test(hint) && (max === 0 || max <= 12) && RX.otp.test(hint);
   if (type === "password") {
     // A code box drawn as a password field is still a code box (never put the password there).
-    if (otpish && !RX.password.test(hint)) return "otp";
+    if (otpish && (!RX.password.test(hint) || RX.otpStrong.test(hint))) return "otp";
+    // An unlabeled short numeric box is a code even when drawn as a password field.
+    if (max >= 4 && max <= 8 && (el.inputMode === "numeric" || /\d/.test(el.pattern)) && !RX.password.test(hint) && !RX.pwCurrent.test(hint)) return "otp";
     if (RX.pwCurrent.test(hint)) return "password-current";
     if (RX.pwNew.test(hint)) return "password-new";
     return "password";

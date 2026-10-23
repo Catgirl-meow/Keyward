@@ -578,6 +578,16 @@ describe(`autofill (${target})`, () => {
     assert.equal(saved.login?.uris[0]?.uri, FX.url("shop", ""));
   });
 
+  test("no update prompt for a one-time code typed into a password field", async () => {
+    const { page, tabId } = await open(FX.url("login", "/code-as-password.html"));
+    await page.bringToFront();
+    await page.type("#p", "493 817");
+    await Promise.all([page.waitForNavigation(), page.click("button")]);
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.equal(page.frames().some((f) => f.url().includes("/savebar.html")), false);
+    assert.equal(Object.keys(await ext.evaluate((id) => chrome.storage.session.get(`save:${id}`), tabId)).length, 0, "a save prompt is pending");
+  });
+
   test("no save prompt when the login form comes back (wrong password)", async () => {
     const { page, tabId } = await open(FX.url("login", "/plain.html"));
     await page.$eval("form", (f) => ((f as HTMLFormElement).action = "/check"));
@@ -632,7 +642,7 @@ describe(`autofill (${target})`, () => {
     assert.equal(p?.kind, "update", `no update prompt: ${JSON.stringify(p && { kind: p.kind, type: p.data?.type })}`);
     assert.equal(p.itemId, ids["Login site"]);
     assert.equal(p.data.newPassword, generated);
-    await call("save.decide", { token: p.token, action: "update" });
+    await call("save.decide", { token: p.token, action: "dismiss" }); // the item keeps its password for the other tests
   });
 
   test("fill on page load: off by default; on, it fills forms drawn late and after in-page navigation", async () => {
