@@ -51,20 +51,37 @@ account.
 
 1. On addons.mozilla.org, open **Developer Hub → Manage API Keys** and create a key. You get a
    JWT issuer and a secret.
-2. Run:
+2. Put them in `.env` (git-ignored; see `.env.example`):
 
    ```sh
-   npm run package
-   WEB_EXT_API_KEY=<JWT issuer> WEB_EXT_API_SECRET=<secret> npm run sign:firefox
+   AMO_JWT_ISSUER=user:12345:678
+   AMO_JWT_SECRET=<secret>
    ```
 
-   The signed `.xpi` lands in `dist/`. `keyward-source.zip` is uploaded with it, because the
-   build is minified.
+   Then, on `main` with everything committed and pushed:
+
+   ```sh
+   npm run release -- --bump=patch   # or leave out --bump if package.json already has the new version
+   ```
+
+   This packages both builds, uploads the Firefox one with `keyward-source.zip` to Mozilla for
+   unlisted signing (it waits up to 15 minutes for approval), tags `v<version>`, pushes the tag
+   and publishes a GitHub release with the signed `.xpi`, the Chromium zip, the source zip and
+   `SHA256SUMS`. It needs `gh` signed in. The signed file is also kept in `dist/signed/`.
+   `--dry-run` stops before signing; `--draft` makes the GitHub release a draft.
+
+   Release builds always preset the public server, never `KW_DEFAULT_SERVER` from `.env`, and the
+   script fails if your server's address turns up anywhere in the build. `KW_GECKO_ID` is used
+   as is, so it is visible in the published `.xpi`.
 3. In LibreWolf, open `about:addons`, click the gear menu, choose **Install Add-on From File…**
    and pick the signed `.xpi`.
 
-**Updating:** raise `version` in `package.json`, then package and sign again. Mozilla doesn't
-sign the same version twice. Then install the new file the same way.
+**Updating:** run `npm run release -- --bump=patch` again; Mozilla doesn't sign the same
+version twice. Then install the new file the same way.
+
+The **Release** workflow on GitHub (Actions → Release → Run workflow) does the same from a
+runner, for when your laptop isn't at hand. It needs the repository secrets `AMO_JWT_ISSUER` and
+`AMO_JWT_SECRET`, and the repository variable `KW_GECKO_ID` if you set one in `.env`.
 
 ### Option B: unsigned
 

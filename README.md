@@ -22,7 +22,8 @@ browsers (Helium, Chromium) and Firefox-based ones (LibreWolf, Firefox) on Linux
 
 ## Install
 
-Build it yourself (Node 24+):
+Download the Mozilla-signed `.xpi` and the Chromium zip from
+[Releases](https://github.com/Catgirl-meow/Keyward/releases), or build it yourself (Node 24+):
 
 ```sh
 npm install
