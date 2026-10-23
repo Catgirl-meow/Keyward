@@ -18,10 +18,10 @@
     "dev-server": "sh scripts/dev-server.sh",
     "seed": "node scripts/seed.ts",
     "lint:firefox": "web-ext lint --source-dir dist/firefox",
-    "sign:firefox": "web-ext sign --channel=unlisted --source-dir dist/firefox --artifacts-dir dist --upload-source-code dist/keyward-source.zip",
     "e2e": "npm run e2e:helium && npm run e2e:librewolf",
     "smoke": "node tests/e2e/smoke.ts",
-    "package": "node scripts/package.ts"
+    "package": "node scripts/package.ts",
+    "release": "node scripts/release.ts"
   },
   "dependencies": {
     "@preact/signals": "^2.11.3",

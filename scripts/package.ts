@@ -1,7 +1,7 @@
 // Release packages. Builds both targets, lints the Firefox build and zips everything:
 //   node scripts/package.ts
 //     dist/keyward-<version>-chromium.zip   Helium / Chromium (load unpacked, or drag into chrome://extensions)
-//     dist/keyward-<version>-firefox.xpi    LibreWolf, unsigned (signing: npm run sign:firefox)
+//     dist/keyward-<version>-firefox.xpi    LibreWolf, unsigned (signed releases: npm run release)
 //     dist/keyward-source.zip               the committed source, for AMO's review of minified code
 // KW_DIST builds somewhere other than dist/, as for scripts/build.ts.
 import { execFileSync } from "node:child_process";
