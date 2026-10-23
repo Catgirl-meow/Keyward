@@ -1,4 +1,6 @@
 // Generates manifest.json per browser. Kept in code (not JSON files) so both targets share one source.
+import { config } from "./config.ts";
+
 export type Target = "chromium" | "firefox";
 
 // Stable extension id for Chromium (test fixtures, users' allow-lists). Public key only.
@@ -72,7 +74,7 @@ export function manifest(target: Target, version: string, chromiumKey: string | 
     m.permissions.push("webRequestBlocking");
     m.browser_specific_settings = {
       gecko: {
-        id: "keyward@catg1rl.com",
+        id: config.geckoId,
         strict_min_version: "140.0",
         data_collection_permissions: { required: ["none"] },
       },

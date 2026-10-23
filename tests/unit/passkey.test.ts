@@ -102,7 +102,7 @@ describe("client rules", () => {
     expect(resolveRpId("https://me.github.io", "github.io")).toMatchObject({ error: "SecurityError" });
     expect(resolveRpId("http://example.com")).toMatchObject({ fallback: expect.any(String) });
     expect(resolveRpId("http://login.localhost:8090")).toEqual({ rpId: "login.localhost" });
-    expect(resolveRpId("https://192.168.2.2")).toMatchObject({ fallback: expect.any(String) });
+    expect(resolveRpId("https://192.168.1.2")).toMatchObject({ fallback: expect.any(String) });
   });
 
   test("create(): no ES256 or a security-key request goes to the browser", () => {

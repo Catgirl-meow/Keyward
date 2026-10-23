@@ -90,7 +90,7 @@ privacy settings.
 
 ## First run
 
-1. Click the Keyward button. The server is preset to `https://pass.catg1rl.com`. To use another
+1. Click the Keyward button. The server is preset to `KW_DEFAULT_SERVER` from `.env` at build time (`https://vault.bitwarden.com` if unset). To use another
    server, open **Server** on the login screen.
 2. Log in with your email and master password, then complete two-step login if your account
    has it (authenticator app, email code or security key).

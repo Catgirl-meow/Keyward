@@ -1,6 +1,21 @@
+# dependencies and build output
 node_modules/
 dist/
 .cache/
+*.zip
+*.xpi
+*.tsbuildinfo
+
+# local config and credentials (never commit)
+.env
+.env.*
+!.env.example
 tests/.env.test
+*.pem
+*.key
+manifest/chromium-key.pem
+
+# test output and local notes
 tests/.artifacts/
+issues/
 *.log

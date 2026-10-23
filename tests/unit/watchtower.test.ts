@@ -48,7 +48,7 @@ describe("watchtower", () => {
       login("Reused A", { pw: "Shared-Pa55-Phrase!", uris: ["https://a.example"] }),
       login("Reused B", { pw: "Shared-Pa55-Phrase!", uris: ["https://b.example"] }),
       login("Plain", { uris: ["http://plain.example/login"] }),
-      login("Router", { uris: ["http://192.168.2.1/"] }),
+      login("Router", { uris: ["http://192.168.1.1/"] }),
       login("NAS", { uris: ["http://nas.local:5000"] }),
       login("Dup", { user: "kay", pw: "Dup-Pa55-Word-9!", uris: ["https://dup.example"] }),
       login("dup ", { user: "kay", pw: "Dup-Pa55-Word-9!", uris: ["https://dup.example/other-path"] }),

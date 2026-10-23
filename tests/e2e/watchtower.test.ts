@@ -59,7 +59,7 @@ const SEED: CipherView[] = [
   loginItem("Reused A", shared, ["https://a.example"]),
   loginItem("Reused B", shared, ["https://b.example"]),
   loginItem("Plain http", randomPassword(), ["http://plain.example/login"]),
-  loginItem("Router", randomPassword(), ["http://192.168.2.1/"]),
+  loginItem("Router", randomPassword(), ["http://192.168.1.1/"]),
   loginItem("Dup", dup, ["https://dup.example"]),
   loginItem("Dup", dup, ["https://dup.example"]),
   loginItem("No password", null, ["https://nopw.example"]),

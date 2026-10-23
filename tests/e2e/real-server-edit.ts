@@ -7,7 +7,8 @@ import { testEnv } from "./launch.ts";
 import { decryptCipher, encryptCipher } from "../../src/core/vault/cipher.ts";
 
 const env = testEnv();
-process.env.KW_SERVER = env.KW_REAL_SERVER ?? "https://pass.catg1rl.com";
+if (!env.KW_REAL_SERVER) throw new Error("no KW_REAL_SERVER in tests/.env.test");
+process.env.KW_SERVER = env.KW_REAL_SERVER;
 const vw = await import("../lib/vw.ts");
 if (!env.KW_REAL_EMAIL || !env.KW_REAL_PASSWORD) throw new Error("no KW_REAL_EMAIL / KW_REAL_PASSWORD in tests/.env.test");
 

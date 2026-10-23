@@ -1,7 +1,7 @@
 # Bitwarden / Vaultwarden protocol notes
 
 What Keyward implements, as verified against Vaultwarden 1.37.2 and 1.37.4 (both report web-vault 2026.6.0;
-the local test server runs 1.37.4, the version on pass.catg1rl.com since 2026-10-17).
+the local test server runs 1.37.4, the version on the author's server since 2026-10-17).
 
 ## Headers
 

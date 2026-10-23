@@ -13,7 +13,7 @@ export default defineConfig({
       },
     },
   ],
-  define: { __CHROMIUM__: "true", __FIREFOX__: "false", __DEV__: "true", __VERSION__: '"test"' },
+  define: { __CHROMIUM__: "true", __FIREFOX__: "false", __DEV__: "true", __VERSION__: '"test"', __DEFAULT_SERVER__: '"https://vault.example.test"' },
   oxc: { jsx: { runtime: "automatic", importSource: "preact" } },
   test: {
     include: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"],

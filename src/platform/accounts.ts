@@ -3,7 +3,7 @@ import { Api, serverUrls, type ClientInfo, type TokenStore, type Tokens } from "
 import type { Kdf } from "../core/crypto/kdf.ts";
 import { local } from "./storage.ts";
 
-export const DEFAULT_SERVER = "https://pass.catg1rl.com";
+export const DEFAULT_SERVER = __DEFAULT_SERVER__;
 export const CLIENT_VERSION = "2026.9.3"; // what Vaultwarden gates features on; keep current
 
 export interface Account {

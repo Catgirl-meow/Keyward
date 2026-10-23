@@ -1,5 +1,5 @@
 #!/bin/sh
-# Local test stack: Vaultwarden 1.37.4 (as on pass.catg1rl.com) + mailpit (SMTP sink for email 2FA) in one podman pod.
+# Local test stack: Vaultwarden 1.37.4 (the version the author runs) + mailpit (SMTP sink for email 2FA) in one podman pod.
 # Data lives on tmpfs, so every `up` starts from an empty server.
 #   scripts/dev-server.sh up | down | status | logs
 #   vault:   http://localhost:8087   (web vault included; WebAuthn RP ID = localhost)

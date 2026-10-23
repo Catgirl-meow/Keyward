@@ -10,6 +10,7 @@ declare const __CHROMIUM__: boolean;
 declare const __FIREFOX__: boolean;
 declare const __DEV__: boolean;
 declare const __VERSION__: string;
+declare const __DEFAULT_SERVER__: string;
 declare module "icon:*" {
   const d: string;
   export default d;

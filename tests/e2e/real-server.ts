@@ -1,4 +1,4 @@
-// Smoke test against the real server (pass.catg1rl.com, behind BunkerWeb) with a dedicated test
+// Smoke test against a real server (KW_REAL_SERVER in tests/.env.test) with a dedicated test
 // account. Deliberately small (one API login, then one extension login per browser) so the WAF
 // has nothing to ban. Not part of `npm run e2e`.
 //   node tests/e2e/real-server.ts [--create] [chromium|firefox]
@@ -14,7 +14,8 @@ import { CipherType } from "../../src/core/vault/types.ts";
 
 const args = process.argv.slice(2);
 const env = testEnv();
-const SERVER = env.KW_REAL_SERVER ?? "https://pass.catg1rl.com";
+const SERVER = env.KW_REAL_SERVER;
+if (!SERVER) throw new Error("set KW_REAL_SERVER=https://your.server in tests/.env.test");
 process.env.KW_SERVER = SERVER; // tests/lib/vw.ts reads it at import
 const vw = await import("../lib/vw.ts");
 
@@ -22,7 +23,7 @@ let email = env.KW_REAL_EMAIL;
 let password = env.KW_REAL_PASSWORD;
 if (args.includes("--create")) {
   if (email) throw new Error(`tests/.env.test already has KW_REAL_EMAIL=${email}`);
-  email = "keyward-test@catg1rl.com";
+  email = args.find((a) => a.includes("@")) ?? `keyward-test@${new URL(SERVER).hostname}`;
   password = vw.randomPassword();
   if (!(await vw.register(email, password, vw.ARGON2, "Keyward test"))) throw new Error("registration refused (account exists, or sign-ups are closed)");
   appendFileSync(join(new URL("../..", import.meta.url).pathname, "tests/.env.test"), `KW_REAL_SERVER=${SERVER}\nKW_REAL_EMAIL=${email}\nKW_REAL_PASSWORD=${password}\n`);

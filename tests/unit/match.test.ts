@@ -26,7 +26,7 @@ describe("uri matching", () => {
     expect(uriMatches("example.co.uk", 5, page)).toBe(false);
   });
   it("ip and localhost compare by host", () => {
-    expect(uriMatches("http://192.168.2.2:8006", 0, parseUrl("https://192.168.2.2:8006/#v1")!)).toBe(true);
+    expect(uriMatches("http://192.168.1.2:8006", 0, parseUrl("https://192.168.1.2:8006/#v1")!)).toBe(true);
     expect(uriMatches("http://localhost:3000", 0, parseUrl("http://localhost:8080")!)).toBe(true);
   });
   it("index finds equivalent domains and special matches without scanning", () => {

@@ -71,7 +71,7 @@ async function mainVault(email: string): Promise<(CipherView & { folder?: string
   add(loginItem("Google", [["https://accounts.google.com", 1], ["https://google.com", 0]], "kw.tester@gmail.com"), "Personal");
   add(loginItem("Microsoft", [["https://login.live.com", 1], ["https://login.microsoftonline.com", 1]], "kw.tester@outlook.com"), "Work");
   add(loginItem("Yandex", [["https://passport.yandex.ru", 0]], "kw-tester"), "Personal");
-  add(loginItem("Router", [["http://192.168.2.1", null]], "admin"), "Personal");
+  add(loginItem("Router", [["http://192.168.1.1", null]], "admin"), "Personal");
   add(loginItem("Fixture site", [["http://localhost:8090", 1]], "fixture-user"), "Dev");
   add(loginItem("Fixture site (second user)", [["http://localhost:8090", 1]], "fixture-user-2"), "Dev");
   add(loginItem("Starts-with match", [["https://example.com/app/", 2]], "prefix-user"));

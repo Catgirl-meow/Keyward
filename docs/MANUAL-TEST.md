@@ -4,7 +4,7 @@ The automated tests (`npm test`, `npm run e2e`) run against a local Vaultwarden 
 pages. This list covers what only you can check: your server, your account, your phone and the
 sites you actually use. Do it in Helium and in LibreWolf.
 
-Try a test account on `pass.catg1rl.com` first, then your own account. Tick an item only when
+Try a test account on your server first, then your real account. Tick an item only when
 you saw the expected result. If something goes wrong, note the browser, the site and what
 happened.
 
@@ -17,7 +17,7 @@ happened.
 - [ ] Two-step login, once with each method your account has:
   - [ ] Authenticator app: the code is accepted.
   - [ ] Email: the code arrives and is accepted.
-  - [ ] Security key or passkey: Keyward opens a `pass.catg1rl.com` tab and the browser asks
+  - [ ] Security key or passkey: Keyward opens a tab on your server and the browser asks
         for the key; the tab closes once you confirm. A key registered before the server's
         domain fix (2026-10-15) no longer works. Log in another way and register it again in
         the web vault.

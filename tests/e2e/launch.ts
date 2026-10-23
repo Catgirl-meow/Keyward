@@ -5,11 +5,12 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
+import { config } from "../../scripts/config.ts";
 
 export type Target = "chromium" | "firefox";
 const root = new URL("../..", import.meta.url).pathname;
 export const CHROMIUM_ID = readFileSync(join(root, "manifest/chromium-id.txt"), "utf8").trim();
-export const FIREFOX_ID = "keyward@catg1rl.com";
+export const FIREFOX_ID = config.geckoId;
 export const FIREFOX_UUID = "6b8f0a3e-2a51-4c4b-9a7e-6b4e2b6f1d10";
 
 export interface Keyward {

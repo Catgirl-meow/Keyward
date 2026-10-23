@@ -5,6 +5,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statS
 import { dirname, join, relative, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 import { manifest, CHROMIUM_KEY_FILE, type Target } from "./manifest.ts";
+import { config } from "./config.ts";
 import { frontCode } from "../src/core/watchtower/frontcode.ts";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -57,6 +58,7 @@ function common(target: Target): esbuild.BuildOptions {
       __FIREFOX__: String(target === "firefox"),
       __DEV__: String(dev),
       __VERSION__: JSON.stringify(pkg.version),
+      __DEFAULT_SERVER__: JSON.stringify(config.defaultServer),
     },
     plugins: [wasmPlugin, iconPlugin],
     // OpenPGP.js's lightweight bundle: curves and legacy ciphers load only when a key needs them.
