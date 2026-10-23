@@ -7,6 +7,7 @@
 <button id="login-user">Sign in as this user</button>
 <p id="result"></p>
 <script>
+"use strict"; // like the bundles real sites ship: a write to a read-only property throws
 const out = (s) => (document.getElementById("result").textContent = s);
 const post = (path, body) => fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
 const params = new URLSearchParams(location.search);
@@ -45,6 +46,9 @@ const signIn = async (user) => {
     const o = await post("/rp/auth/options", { user, timeout });
     const cred = await navigator.credentials.get({ publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(o) });
     const ext = cred.getClientExtensionResults();
+    // GitHub's webauthn-json patches the credential it gets back.
+    const toJSON = cred.toJSON;
+    cred.toJSON = () => toJSON.call(cred);
     const v = await post("/rp/auth/verify", { response: cred.toJSON() });
     out(v.verified && ext && cred instanceof PublicKeyCredential ? `signed in as ${v.user}` : `sign-in failed ${v.error ?? ""}`);
   } catch (e) {

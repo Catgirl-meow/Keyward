@@ -57,8 +57,13 @@
     });
   }
 
+  // Methods stay writable, as they are on the browser's own credentials (where they live on the
+  // prototype): pages patch them, e.g. GitHub assigns its own toJSON to the credential.
   const define = <T extends object>(o: T, props: Record<string, unknown>): T => {
-    for (const k of Object.keys(props)) Object.defineProperty(o, k, { value: props[k], enumerable: true });
+    for (const k of Object.keys(props)) {
+      const fn = typeof props[k] === "function";
+      Object.defineProperty(o, k, { value: props[k], enumerable: !fn, writable: fn, configurable: fn });
+    }
     return o;
   };
 
