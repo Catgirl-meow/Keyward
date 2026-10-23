@@ -613,6 +613,28 @@ describe(`autofill (${target})`, () => {
     assert.equal(await val(page, "#u"), FX.login.user);
   });
 
+  test("password change with a generated password (GitHub's form): the update prompt shows", async () => {
+    await setAutofill({ onPageLoad: true });
+    const { page, tabId } = await open(FX.url("login", "/github-password.html")).finally(() => setAutofill({ onPageLoad: false }));
+    await page.bringToFront();
+    await waitVal(page, "#user_old_password_sign_in_methods", FX.login.pass); // filled on page load
+    await page.focus("#user_new_password_sign_in_methods");
+    await runCommand("generate_password", tabId);
+    await page.waitForFunction(() => (document.querySelector("#user_new_password_sign_in_methods") as HTMLInputElement).value.length > 8, { timeout: 8000, polling: 50 });
+    const generated = await val(page, "#user_new_password_sign_in_methods");
+    assert.equal(await val(page, "#user_confirm_new_password_sign_in_methods"), generated);
+    await Promise.all([page.waitForNavigation(), page.click("button[type=submit]")]);
+    let p: any;
+    for (const end = Date.now() + 10_000; !p?.shown && Date.now() < end; ) {
+      p = (await ext.evaluate((id) => chrome.storage.session.get(`save:${id}`), tabId))[`save:${tabId}`];
+      if (!p?.shown) await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.equal(p?.kind, "update", `no update prompt: ${JSON.stringify(p && { kind: p.kind, type: p.data?.type })}`);
+    assert.equal(p.itemId, ids["Login site"]);
+    assert.equal(p.data.newPassword, generated);
+    await call("save.decide", { token: p.token, action: "update" });
+  });
+
   test("fill on page load: off by default; on, it fills forms drawn late and after in-page navigation", async () => {
     let { page } = await open(FX.url("login", "/plain.html"));
     await new Promise((r) => setTimeout(r, 1500));

@@ -51,6 +51,9 @@ export function startFixtures(port = FX.port): Promise<Server> {
           case "/signup":
           case "/changed":
             return redirect("/welcome.html");
+          case "/account/password":
+            // Like GitHub: back to the settings page, which has the change form again.
+            return redirect("/github-password.html?changed=1");
           case "/check":
             // Always "wrong password": the login form comes back.
             return redirect("/plain.html?error=1");
