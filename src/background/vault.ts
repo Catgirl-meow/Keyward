@@ -1,5 +1,6 @@
 // Vault writes. The background is the only writer: it calls the API, stores the server's
 // response, patches one summary bucket and broadcasts the change.
+import { loadPolicy } from "../platform/policy.ts";
 import { encryptString } from "../core/crypto/encstring.ts";
 import { patchBuckets, writeAux, loadSnapshot } from "../core/store/summaries.ts";
 import { decryptCipher, encryptCipher, summarize } from "../core/vault/cipher.ts";
@@ -40,9 +41,12 @@ async function refreshAux(c: UnlockedCtx) {
   broadcast({ kind: "vault", accountId: c.account.id, full: true });
 }
 
+const OWNERSHIP = "Your organization's policy requires new items to belong to the organization";
+
 const handlers: Handlers = {
   async "vault.save"({ accountId, view, collectionIds, keepServer }) {
     const c = await unlockedCtx(accountId);
+    if (!view.id && !view.organizationId && (await loadPolicy(c.account.id))?.personalOwnership) throw new Error(OWNERSHIP);
     const base = view.id ? await c.db.getCipher(view.id) : null;
     const { body } = await encryptCipher(view, c.ring, { base, useItemKey: true, encryptedFor: c.account.id });
     let raw: RawCipher;
@@ -150,6 +154,7 @@ const IMPORT_CHUNK = 500;
 export const importHandlers: Handlers = {
   async "vault.import"({ accountId, items, folders, relations }) {
     const c = await unlockedCtx(accountId);
+    if ((await loadPolicy(c.account.id))?.personalOwnership) throw new Error(OWNERSHIP);
     const folderIds = async () => {
       const list = await c.api.get("/folders");
       const all = list?.data ?? list ?? [];

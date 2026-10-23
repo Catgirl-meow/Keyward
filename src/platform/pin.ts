@@ -5,6 +5,7 @@ import { decryptBytes, decryptString, encryptBytes, encryptString } from "../cor
 import { deriveMasterKey, stretchKey, type Argon2Fn, type Kdf } from "../core/crypto/kdf.ts";
 import { SymKey } from "../core/crypto/symkey.ts";
 import { randomBytes, toB64 } from "../core/util/bytes.ts";
+import { loadPolicy } from "./policy.ts";
 import { local, session } from "./storage.ts";
 
 interface PinState {
@@ -42,6 +43,7 @@ export async function hasPinConfigured(accountId: string): Promise<boolean> {
 
 /** PIN unlock is possible right now (session wrap present, or persistent wrap enabled). */
 export async function pinAvailable(accountId: string): Promise<boolean> {
+  if ((await loadPolicy(accountId))?.removePin) return false;
   const st = await local.get<PinState>(`pin:${accountId}`);
   if (!st) return false;
   return !!(st.persistentWrap || (await session.get(`pinSession:${accountId}`)));

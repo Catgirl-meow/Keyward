@@ -69,9 +69,11 @@ export async function boot(): Promise<void> {
     }
   });
   onChanged((ch, area) => {
-    if (area === "local" && ch.settings) {
-      settings.value = { ...DEFAULT_SETTINGS, ...(ch.settings.newValue as Settings) };
-      applyTheme(settings.value);
+    if (area === "local" && (ch.settings || ch.policies || ch.accounts)) {
+      void loadSettings().then((s) => {
+        settings.value = s;
+        applyTheme(s);
+      });
     }
   });
 }

@@ -4,6 +4,8 @@ import { clearPin, hasPinConfigured, setPin } from "../../platform/pin.ts";
 import { lazyArgon2 } from "../../platform/login.ts";
 import { rpc } from "../../platform/messages.ts";
 import { LockTimeout, type Settings } from "../../platform/settings.ts";
+import { PolicyType } from "../../core/vault/policy.ts";
+import { PolicyNote } from "./policy-note.tsx";
 import { Avatar, Banner, Button, Group, Icon, IconButton, Row, SecretField, Select, Sheet, Switch, TextField, TopBar, confirm, openMenu, toast } from "../components/kit.tsx";
 import * as I from "../icons/index.ts";
 import { account, accounts, addingAccount, aux, currentRing, lockNow, refreshPhase, settings, switchAccount, syncNow, syncStatus, updateSettings } from "../data/app.ts";
@@ -25,6 +27,13 @@ const LOCK_OPTIONS: [string, string][] = [
   [String(LockTimeout.OnRestart), "On browser restart"],
   [String(LockTimeout.Never), "Never"],
 ];
+
+/** The timeout choices, capped by a policy's maximum (which is always offered). */
+function lockOptions(max: number | undefined): [string, string][] {
+  if (!max) return LOCK_OPTIONS;
+  const ok = LOCK_OPTIONS.filter(([k]) => Number(k) >= 0 && Number(k) <= max);
+  return ok.some(([k]) => Number(k) === max) ? ok : [...ok, [String(max), lockLabel(max)]];
+}
 
 function lockLabel(v: number): string {
   return LOCK_OPTIONS.find(([k]) => Number(k) === v)?.[1] ?? `After ${v} minutes`;
@@ -188,8 +197,9 @@ function SecurityPage() {
     <>
       <div class="section-label">Vault timeout</div>
       <div class="pad col" style={{ gap: "10px" }}>
-        <Select label="Lock the vault" value={String(s.lockTimeout)} options={LOCK_OPTIONS} onChange={(v) => set({ lockTimeout: Number(v) })} />
-        <Select label="When the timeout runs out" value={s.timeoutAction} options={[["lock", "Lock"], ["logout", "Log out"]]} onChange={(v) => set({ timeoutAction: v as "lock" | "logout" })} />
+        <Select label="Lock the vault" value={String(s.lockTimeout)} options={lockOptions(s.policy?.maxTimeout?.minutes)} onChange={(v) => set({ lockTimeout: Number(v) })} />
+        <Select label="When the timeout runs out" value={s.timeoutAction} options={s.policy?.maxTimeout?.action ? [[s.policy.maxTimeout.action, s.policy.maxTimeout.action === "lock" ? "Lock" : "Log out"]] : [["lock", "Lock"], ["logout", "Log out"]]} onChange={(v) => set({ timeoutAction: v as "lock" | "logout" })} />
+        <PolicyNote type={PolicyType.MaximumVaultTimeout}>At most {lockLabel(s.policy?.maxTimeout?.minutes ?? 0).toLowerCase().replace(/^after /, "")}, set</PolicyNote>
       </div>
       {s.lockTimeout === LockTimeout.Never && (
         <div class="pad" style={{ marginTop: "10px" }}>
@@ -202,6 +212,9 @@ function SecurityPage() {
       </Group>
 
       <div class="section-label">Unlock</div>
+      {s.policy?.removePin ? (
+        <div class="pad"><PolicyNote type={PolicyType.RemoveUnlockWithPin}>PIN unlock is turned off</PolicyNote></div>
+      ) : (
       <Group>
         <Toggle
           icon={I.dialpad}
@@ -222,6 +235,7 @@ function SecurityPage() {
           <Row leading={<div class="settings-ico"><Icon d={I.edit} /></div>} title="Change PIN" sub={s.pinSurvivesRestart ? "Survives restart" : "Session only"} onClick={() => setPinSheet(true)} />
         )}
       </Group>
+      )}
 
       <div class="section-label">Clipboard</div>
       <div class="pad">

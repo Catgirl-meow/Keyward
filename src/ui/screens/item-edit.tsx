@@ -98,7 +98,7 @@ export function ItemEdit({ id, type, prefill }: { id?: string; type?: ItemKind; 
         const r = await openItem(prefill.clone);
         if (r) {
           const [view, key] = await splitGpg(r.view);
-          setV({ ...structuredClone(view), id: "", name: r.view.name + " (copy)", attachments: [], passwordHistory: [], revisionDate: null, creationDate: null });
+          setV({ ...structuredClone(view), id: "", name: r.view.name + " (copy)", attachments: [], passwordHistory: [], revisionDate: null, creationDate: null, organizationId: view.organizationId ?? (settings.value.policy?.personalOwnership ? aux.value.orgs[0]?.id ?? null : null) });
           setGkey(key);
         }
       } else {
@@ -112,6 +112,7 @@ export function ItemEdit({ id, type, prefill }: { id?: string; type?: ItemKind; 
           if (prefill.uri) base.login!.uris = [{ uri: prefill.uri, match: null }];
         }
         if (prefill?.folderId) base.folderId = prefill.folderId;
+        if (settings.value.policy?.personalOwnership) base.organizationId = aux.value.orgs[0]?.id ?? null;
         setV(base);
       }
     })();
@@ -326,7 +327,7 @@ export function ItemEdit({ id, type, prefill }: { id?: string; type?: ItemKind; 
             label="Owner"
             value={v.organizationId ?? ""}
             onChange={(x) => { set({ organizationId: x || null }); setCols([]); }}
-            options={[["", "My vault"], ...aux.value.orgs.map((o) => [o.id, o.name] as [string, string])]}
+            options={[...(v.id || !settings.value.policy?.personalOwnership ? [["", "My vault"] as [string, string]] : []), ...aux.value.orgs.map((o) => [o.id, o.name] as [string, string])]}
           />
         )}
         {v.organizationId && (

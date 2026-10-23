@@ -1,4 +1,7 @@
 // Settings → Export vault / Import items.
+import { PolicyNote } from "./policy-note.tsx";
+import { settings as appSettings } from "../data/app.ts";
+import { PolicyType } from "../../core/vault/policy.ts";
 import { useState } from "preact/hooks";
 import { csvSkipped, exportable, exportAccountEncrypted, exportCsv, exportFileName, exportJson, exportPasswordProtected, type ExportFormat } from "../../core/export/export.ts";
 import { detectFormat, FORMAT_LABEL, ImportError, parseImport, type ImportFormat, type ImportResult } from "../../core/export/import.ts";
@@ -72,6 +75,9 @@ export function ExportPage() {
     }
   }
 
+  if (appSettings.value.policy?.disableExport) {
+    return <div class="pad"><PolicyNote type={PolicyType.DisablePersonalVaultExport}>Exporting the vault is turned off</PolicyNote></div>;
+  }
   return (
     <div class="col transfer" style={{ gap: "12px", margin: "0 16px" }}>
       <Select label="File format" value={format} onChange={(v) => setFormat(v as ExportFormat)} options={FORMATS} />

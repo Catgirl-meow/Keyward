@@ -1,3 +1,5 @@
+import { policedTimeout, type EffectivePolicy } from "../core/vault/policy.ts";
+import { loadPolicy } from "./policy.ts";
 import { local } from "./storage.ts";
 
 export const LockTimeout = {
@@ -37,6 +39,9 @@ export interface Settings {
   };
   passkeys: { enabled: boolean; excluded: string[] };
   generator: Record<string, unknown>;
+  /** the active account's organization policies (computed, never saved); lockTimeout and
+   * timeoutAction above already follow them */
+  policy?: EffectivePolicy;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -80,11 +85,16 @@ function merge<T>(base: T, over: any): T {
 }
 
 export async function loadSettings(): Promise<Settings> {
-  return merge(DEFAULT_SETTINGS, await local.get("settings"));
+  const [s, policy] = await Promise.all([local.get("settings"), loadPolicy()]);
+  const out = merge(DEFAULT_SETTINGS, s);
+  if (!policy) return out;
+  const t = policedTimeout(out.lockTimeout, out.timeoutAction, policy);
+  return { ...out, lockTimeout: t.minutes, timeoutAction: t.action, policy };
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
-  const next = merge(await loadSettings(), patch);
+  const next = merge(merge(DEFAULT_SETTINGS, await local.get("settings")), patch);
+  delete next.policy;
   await local.set("settings", next);
-  return next;
+  return loadSettings();
 }

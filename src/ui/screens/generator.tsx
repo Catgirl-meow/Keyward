@@ -1,4 +1,8 @@
 import { useEffect, useState } from "preact/hooks";
+import { PolicyNote } from "./policy-note.tsx";
+import { policedPassphrase, policedPassword } from "../../core/vault/policy.ts";
+import { settings as appSettings } from "../data/app.ts";
+import { PolicyType } from "../../core/vault/policy.ts";
 import { decryptString, encryptString } from "../../core/crypto/encstring.ts";
 import {
   DEFAULT_PASSPHRASE, DEFAULT_PASSWORD, generatePassphrase, generatePassword, generateUsername, passphraseEntropy, passwordEntropy,
@@ -118,7 +122,10 @@ export function GeneratorScreen({ onUse, site }: { onUse?: (v: string) => void; 
 
   if (!p) return null;
   const update = (patch: Partial<GeneratorPrefs>) => {
-    const next = { ...p, ...patch };
+    const policy = appSettings.value.policy;
+    const n = { ...p, ...patch };
+    // An organization's minimums hold here too: a slider can't go below them.
+    const next = { ...n, mode: policy?.generator?.type && n.mode !== "username" ? policy.generator.type : n.mode, password: policedPassword(n.password, policy), passphrase: policedPassphrase(n.passphrase, policy) };
     setP(next);
     void local.set("generator", next);
   };
@@ -147,6 +154,9 @@ export function GeneratorScreen({ onUse, site }: { onUse?: (v: string) => void; 
   return (
     <div class="generator">
       {!onUse && <TopBar title="Generator" actions={<IconButton icon={I.history} label="History" onClick={async () => setHistory(await loadSecret("genHistory", []))} />} />}
+      {appSettings.value.policy?.generator && p.mode !== "username" && (
+        <div class="pad" style={{ paddingTop: 0 }}><PolicyNote type={PolicyType.PasswordGenerator}>Minimums set</PolicyNote></div>
+      )}
       <div class="chips" style={{ padding: "4px 16px 12px" }}>
         {(["password", "passphrase", "username"] as const).map((m) => (
           <Chip key={m} selected={p.mode === m} onClick={() => update({ mode: m })}>{m[0].toUpperCase() + m.slice(1)}</Chip>

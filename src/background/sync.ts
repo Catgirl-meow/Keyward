@@ -3,7 +3,11 @@ import { fetchRevision, fullSync } from "../core/sync/sync.ts";
 import { broadcast, type SyncStatus } from "../platform/messages.ts";
 import { setUnlocked } from "../platform/session.ts";
 import { session } from "../platform/storage.ts";
-import { onLoggedOut } from "./lock.ts";
+import { effectivePolicy, type EffectivePolicy, type RawPolicy } from "../core/vault/policy.ts";
+import { clearPin } from "../platform/pin.ts";
+import { loadPolicy, storePolicy } from "../platform/policy.ts";
+import { loadSettings } from "../platform/settings.ts";
+import { onLoggedOut, onSettingsChanged } from "./lock.ts";
 import { unlockedCtx } from "./ctx.ts";
 
 const inflight = new Map<string, Promise<SyncStatus>>();
@@ -18,6 +22,17 @@ export function vaultTurn<T>(fn: () => Promise<T>): Promise<T> {
   const run = queue.then(fn, fn);
   queue = Promise.race([run.catch(() => {}), new Promise((r) => setTimeout(r, TURN_MAX_MS))]);
   return run;
+}
+
+/** Stores the account's policies when they changed and applies what can't wait for a read: no
+ * PIN, the capped lock timeout. */
+async function applyPolicies(accountId: string, eff: EffectivePolicy): Promise<void> {
+  const before = await loadPolicy(accountId);
+  if (JSON.stringify(before ?? { by: {} }) === JSON.stringify(eff)) return;
+  await storePolicy(accountId, eff);
+  if (eff.removePin) await clearPin(accountId);
+  await onSettingsChanged(undefined, (await loadSettings()).lockTimeout);
+  broadcast({ kind: "settings" });
 }
 
 export function syncAccount(accountId?: string, force = false): Promise<SyncStatus> {
@@ -52,6 +67,7 @@ async function doSync(accountId: string | undefined, force: boolean): Promise<Sy
     const before = [...c.ring.orgs.keys()].sort().join();
     const r = await vaultTurn(() => fullSync({ api: c.api, db: c.db, userKey: c.ring.user, cacheKey: c.cacheKey, orgKeys: new Map(c.ring.orgs) }));
     if ([...r.ring.orgs.keys()].sort().join() !== before) await setUnlocked(id, r.ring);
+    await applyPolicies(id, effectivePolicy((await c.db.meta<RawPolicy[]>("policies")) ?? [], r.profile?.organizations ?? []));
     status = { ok: true, at: Date.now(), total: r.total, decrypted: r.decrypted };
     broadcast({ kind: "vault", accountId: id, full: true });
   } catch (e) {

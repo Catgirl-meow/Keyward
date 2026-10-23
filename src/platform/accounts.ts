@@ -1,4 +1,5 @@
 // Account registry + per-account Api construction (usable from SW and pages).
+import { storePolicy } from "./policy.ts";
 import { Api, serverUrls, type ClientInfo, type TokenStore, type Tokens } from "../core/api/client.ts";
 import type { Kdf } from "../core/crypto/kdf.ts";
 import { local } from "./storage.ts";
@@ -51,6 +52,7 @@ export async function removeAccount(id: string): Promise<void> {
   await saveAccounts(s);
   const counters = Object.keys(await local.all()).filter((k) => k.startsWith(`pkn:${id}:`));
   await local.remove([`tokens:${id}`, `pin:${id}`, ...counters]);
+  await storePolicy(id, null);
 }
 
 export async function deviceId(): Promise<string> {

@@ -1,4 +1,7 @@
 // Send: share text or a file through a link that carries its own key.
+import { PolicyNote } from "./policy-note.tsx";
+import { settings as appSettings } from "../data/app.ts";
+import { PolicyType } from "../../core/vault/policy.ts";
 import { useEffect, useState } from "preact/hooks";
 import { SendType, sendStatus, type SendDraft, type SendView } from "../../core/send/send.ts";
 import { rpc } from "../../platform/messages.ts";
@@ -18,6 +21,7 @@ const TYPE = {
 const MAX_FILE = 100 * 1024 * 1024;
 
 export function newSendMenu(anchor: HTMLElement) {
+  if (appSettings.value.policy?.disableSend) return toast("Your organization doesn't allow creating Sends", { tone: "error" });
   openMenu(anchor, [
     { header: true, label: "New Send" },
     { icon: TYPE[SendType.Text].icon, label: "Text", run: () => push({ name: "send-edit", type: SendType.Text }) },
@@ -86,6 +90,7 @@ export function SendList() {
     <div class="send-list">
       <TopBar title="Send" />
       {sendsError.value && <div class="pad"><Banner tone="error">Couldn't read Sends: {sendsError.value}</Banner></div>}
+      {appSettings.value.policy?.disableSend && <div class="pad"><PolicyNote type={PolicyType.DisableSend}>Creating and editing Sends is turned off</PolicyNote></div>}
       {!list ? <Skeleton rows={3} /> : list.length ? (
         <Group>{list.map((s) => <SendRow key={s.id} s={s} />)}</Group>
       ) : (
@@ -270,7 +275,7 @@ function SendEditor({ orig, type }: { orig: SendView | null; type?: number }) {
           hint={orig?.hasPassword ? "Leave empty to keep the current password." : "Recipients need it to open the Send."}
         />
         {orig?.hasPassword && <Button variant="tonal" icon={I.lockOpen} onClick={() => void removePassword(orig)}>Remove password</Button>}
-        <Toggle title="Hide my email address" sub="Recipients won't see who sent it" checked={d.hideEmail} onChange={(v) => set({ hideEmail: v })} />
+        {!appSettings.value.policy?.sendShowEmail && <Toggle title="Hide my email address" sub="Recipients won't see who sent it" checked={d.hideEmail} onChange={(v) => set({ hideEmail: v })} />}
         <Toggle title="Disable this Send" sub="Nobody can open it until you turn this off" checked={d.disabled} onChange={(v) => set({ disabled: v })} />
       </Section>
 
