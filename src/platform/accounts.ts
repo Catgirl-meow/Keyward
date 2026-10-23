@@ -49,7 +49,8 @@ export async function removeAccount(id: string): Promise<void> {
   s.list = s.list.filter((a) => a.id !== id);
   if (s.active === id) s.active = s.list[0]?.id ?? null;
   await saveAccounts(s);
-  await local.remove([`tokens:${id}`, `pin:${id}`]);
+  const counters = Object.keys(await local.all()).filter((k) => k.startsWith(`pkn:${id}:`));
+  await local.remove([`tokens:${id}`, `pin:${id}`, ...counters]);
 }
 
 export async function deviceId(): Promise<string> {

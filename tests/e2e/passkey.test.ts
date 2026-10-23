@@ -3,6 +3,7 @@
 // vault in Bitwarden's format, and hands requests it shouldn't answer to the browser.
 //   KW_TARGET=chromium|firefox node --test tests/e2e/passkey.test.ts
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import type { Server } from "node:http";
 import { after, before, describe, test as nodeTest } from "node:test";
 import type { CDPSession, Frame, Page } from "puppeteer-core";
@@ -165,14 +166,20 @@ describe(`passkeys (${target})`, () => {
     const k = await createPasskey({ rpId: HOSTS.shop, rpName: "Shop", userHandle: handle, userName: "rita", userDisplayName: "Rita", discoverable: true });
     rpAddUser(HOSTS.shop, "rita", Buffer.from(handle).toString("base64url"), { id: Buffer.from(k.rawId).toString("base64url"), publicKey: new Uint8Array(k.pub.cose), counter: 0, transports: ["internal"] });
     const loginOf = (name: string, uri: string, fido2Credentials: typeof k.fido2[]) => ({ username: name, password: "p", passwordRevisionDate: null, totp: null, uris: [{ uri, match: null }], autofillOnPageLoad: null, fido2Credentials });
+    // A passkey that counts (made by an authenticator that keeps a signature counter), on a
+    // host of its own.
+    const counting = await createPasskey({ rpId: HOSTS.mailfence, rpName: "Counting", userHandle: handle, userName: "kay", userDisplayName: "Kay", discoverable: true });
+    counting.fido2.counter = 5;
+    rpAddUser(HOSTS.mailfence, "kay", Buffer.from(handle).toString("base64url"), { id: Buffer.from(counting.rawId).toString("base64url"), publicKey: new Uint8Array(counting.pub.cose), counter: 5, transports: ["internal"] });
     await importItems(api, [
+      emptyView(CipherType.Login, { name: "Counting", login: loginOf("kay", FX.url("mailfence", "/"), [counting.fido2]) }),
       emptyView(CipherType.Login, { name: "Unrelated", login: loginOf("u", "https://example.com", []) }),
       emptyView(CipherType.Login, { name: "Shop", reprompt: 1, login: loginOf("rita", FX.url("shop", "/"), [k.fido2]) }),
     ]);
     kw = await launch(target);
     ext = await kw.openPopup();
     await login(kw, ext, process.env.KW_SERVER ?? env.KW_SERVER, email, password);
-    await waitForItems(ext, 2, 30_000);
+    await waitForItems(ext, 3, 30_000);
   });
   after(async () => {
     await kw?.close();
@@ -209,6 +216,27 @@ describe(`passkeys (${target})`, () => {
 
   test("get() with allowCredentials", async () => {
     const page = await open(FX.url("login", "/passkey.html"));
+    await page.click("#login-user");
+    await confirmDefault(page, await dialog(page), ".kwp-row");
+    assert.equal(await result(page, /^(signed|sign-in|error)/), "signed in as kay");
+  });
+
+  test("a counting passkey signs in while the vault server hangs; its counter is saved after", async () => {
+    const counter = async () => ((await Promise.all((await sync(api)).ciphers.map((c: any) => decryptCipher(c, api.ring)))) as CipherView[])
+      .flatMap((v) => v.login?.fido2Credentials ?? []).find((f) => f.rpId === HOSTS.mailfence)?.counter;
+    const page = await open(FX.url("mailfence", "/passkey.html"));
+    execFileSync("podman", ["kill", "--signal", "STOP", "keyward-dev-vw"]); // the server stops answering
+    try {
+      await page.click("#login-user");
+      await confirmDefault(page, await dialog(page), ".kwp-row");
+      assert.equal(await result(page, /^(signed|sign-in|error)/, 10_000), "signed in as kay");
+    } finally {
+      execFileSync("podman", ["kill", "--signal", "CONT", "keyward-dev-vw"]);
+    }
+    const end = Date.now() + 20_000;
+    while ((await counter()) !== 6 && Date.now() < end) await new Promise((r) => setTimeout(r, 300));
+    assert.equal(await counter(), 6, "the new counter reached the server");
+    // The next sign-in counts on from there (the site refuses a counter that doesn't grow).
     await page.click("#login-user");
     await confirmDefault(page, await dialog(page), ".kwp-row");
     assert.equal(await result(page, /^(signed|sign-in|error)/), "signed in as kay");

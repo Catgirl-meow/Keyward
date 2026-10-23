@@ -41,7 +41,7 @@ async function refreshAux(c: UnlockedCtx) {
 }
 
 const handlers: Handlers = {
-  async "vault.save"({ accountId, view, collectionIds }) {
+  async "vault.save"({ accountId, view, collectionIds, keepServer }) {
     const c = await unlockedCtx(accountId);
     const base = view.id ? await c.db.getCipher(view.id) : null;
     const { body } = await encryptCipher(view, c.ring, { base, useItemKey: true, encryptedFor: c.account.id });
@@ -61,6 +61,7 @@ const handlers: Handlers = {
         // versions. The server's goes into the vault, ours is saved as a copy; nothing is lost.
         if (!(e instanceof ApiError && /out of date/i.test(e.message))) throw e;
         await refetch(c, [view.id]);
+        if (keepServer) throw e; // the caller redoes its change on the server's version
         const copy = { ...view, id: "", name: `${view.name} (conflict copy)`, attachments: [] };
         const enc = await encryptCipher(copy, c.ring, { useItemKey: true, encryptedFor: c.account.id });
         const made: RawCipher = copy.organizationId

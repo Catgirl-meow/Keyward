@@ -14,7 +14,8 @@ import { loadAccounts } from "../platform/accounts.ts";
 import type { Handlers, PasskeyOffer } from "../platform/messages.ts";
 import { isUnlocked } from "../platform/session.ts";
 import { loadSettings } from "../platform/settings.ts";
-import { session } from "../platform/storage.ts";
+import { local, session } from "../platform/storage.ts";
+import { ApiError } from "../core/api/client.ts";
 import { LockedError, unlockedCtx, type UnlockedCtx } from "./ctx.ts";
 import { vaultHandlers } from "./vault.ts";
 import { twoFactorTabs } from "./webauthn2fa.ts";
@@ -152,12 +153,32 @@ async function answerGet(token: string, p: Pending, itemId: string | undefined, 
   const f = view.login?.fido2Credentials.find((x) => x.credentialId === credentialId && x.rpId === p.rpId);
   if (!f) throw new Error("passkey not found");
   const cd = clientDataJSON("webauthn.get", r.challenge, p.origin);
-  const a = await assert(f, await sha256(cd), true);
-  if (a.counter !== f.counter) {
-    f.counter = a.counter;
-    await vaultHandlers["vault.save"]!({ view }, sender);
-  }
+  // A counting passkey must count up even when the last save to the server failed: the
+  // highest counter used on this device is kept locally too.
+  const used = `pkn:${c.account.id}:${f.credentialId}`;
+  const a = await assert({ ...f, counter: Math.max(f.counter, (await local.get<number>(used)) ?? 0) }, await sha256(cd), true);
+  if (a.counter > f.counter) await local.set(used, a.counter);
   await finish(token, p, { ok: authenticationJSON(credentialIdBytes(f.credentialId)!, a, cd) });
+  // The site has its answer; a slow or unreachable server no longer holds up the sign-in.
+  if (a.counter > f.counter) void saveCounter(c.account.id, itemId, f.credentialId, a.counter, sender).catch((e) => console.warn("passkey counter not saved:", e));
+}
+
+/** Stores a passkey's new counter in its item. Changed elsewhere meanwhile: the counter goes
+ * into the server's version (never a conflict copy, which would duplicate the key). */
+async function saveCounter(accountId: string, itemId: string, credentialId: string, counter: number, sender: chrome.runtime.MessageSender) {
+  const { loadView } = await import("./autofill.ts");
+  for (let tries = 0; ; tries++) {
+    const view = await loadView(await unlockedCtx(accountId), itemId);
+    const f = view.login?.fido2Credentials.find((x) => x.credentialId === credentialId);
+    if (!f || f.counter >= counter) return;
+    f.counter = counter;
+    try {
+      await vaultHandlers["vault.save"]!({ accountId, view, keepServer: true }, sender);
+      return;
+    } catch (e) {
+      if (tries > 0 || !(e instanceof ApiError && /out of date/i.test(e.message))) throw e;
+    }
+  }
 }
 
 async function offered(c: UnlockedCtx, p: Pending): Promise<PasskeyOffer[]> {

@@ -32,7 +32,7 @@ export interface RpcMap {
   "session.activity": [{ accountId?: string } | undefined, void];
   "sync.now": [{ accountId?: string; force?: boolean }, SyncStatus];
   // vault writes (background is the single writer)
-  "vault.save": [{ accountId?: string; view: CipherView; collectionIds?: string[] }, { id: string; summary: Summary; conflict?: boolean }];
+  "vault.save": [{ accountId?: string; view: CipherView; collectionIds?: string[]; keepServer?: boolean }, { id: string; summary: Summary; conflict?: boolean }];
   "vault.delete": [{ accountId?: string; ids: string[]; permanent?: boolean }, void];
   "vault.restore": [{ accountId?: string; ids: string[] }, void];
   "vault.archive": [{ accountId?: string; ids: string[]; archive: boolean }, void];
