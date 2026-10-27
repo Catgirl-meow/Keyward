@@ -51,10 +51,10 @@ let version = readVersion();
 let tag = `v${version}`;
 const remoteTag = () => git("ls-remote", "--tags", "origin", `refs/tags/${tag}`);
 
-// The tag already exists when CI runs on a pushed tag: release exactly that commit.
-const tagged = gitOk("rev-parse", "-q", "--verify", `refs/tags/${tag}`);
+// The tag already exists when CI runs on a pushed tag: release exactly that commit. With --bump
+// the current version's tag is the previous release, and a new version is cut below.
+const tagged = !args.has("bump") && gitOk("rev-parse", "-q", "--verify", `refs/tags/${tag}`);
 if (tagged) {
-  if (args.has("bump")) fail(`${tag} already exists; --bump would release a different version than the tag.`);
   if (git("rev-list", "-n1", tag) !== git("rev-parse", "HEAD")) fail(`${tag} exists but points at another commit. Raise the version (--bump=patch).`);
 } else {
   const branch = git("rev-parse", "--abbrev-ref", "HEAD");
