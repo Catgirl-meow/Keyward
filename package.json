@@ -1,6 +1,6 @@
 {
   "name": "keyward",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Fast Bitwarden/Vaultwarden-compatible browser extension with a Keyguard-style UI",
   "type": "module",
