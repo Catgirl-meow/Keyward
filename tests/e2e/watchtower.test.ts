@@ -257,4 +257,30 @@ describe(`watchtower (${target})`, () => {
     if (networkChecked) assert.deepEqual([c.exposed, c.inactive2fa], ["1", "1"]);
     await waitForText(page, `${networkChecked ? 8 : 7} items need attention`);
   });
+
+  test("a reopened popup shows the kept report at once, with nothing sent", async () => {
+    await page.close();
+    page = await kw.openPopup();
+    // The popup comes back on Watchtower (data/resume.ts) with the report kept from last time.
+    const t0 = Date.now();
+    await page.waitForSelector(".wt-grid .wt-card", { timeout: 8000 });
+    await waitForCount("weak", "1", 3000);
+    assert.ok(Date.now() - t0 < 3000, `the kept report took ${Date.now() - t0} ms`);
+    const c = await counts();
+    if (networkChecked) assert.deepEqual([c.exposed, c.inactive2fa], ["1", "1"]);
+    await waitForText(page, `${networkChecked ? 8 : 7} items need attention`);
+    await settle(page);
+    const lookups = await page.evaluate(() => performance.getEntriesByType("resource").map((r) => r.name).filter((u) => /pwnedpasswords|2fa\.directory/.test(u)));
+    assert.deepEqual(lookups, []);
+    // Kept sealed: the database holds ciphertext, not findings or scores.
+    const kept = await page.evaluate(async () => {
+      const dbs = await indexedDB.databases();
+      const name = dbs.map((d) => d.name!).find((n) => n.startsWith("kw-"))!;
+      const db = await new Promise<IDBDatabase>((res, rej) => Object.assign(indexedDB.open(name), { onsuccess(this: IDBOpenDBRequest) { res(this.result); }, onerror: rej }));
+      const v = await new Promise<unknown>((res) => (db.transaction("meta").objectStore("meta").get("watchtower").onsuccess = function (this: IDBRequest) { res(this.result); }));
+      db.close();
+      return v instanceof Uint8Array ? v.length : typeof v;
+    });
+    assert.equal(typeof kept, "number", `kept as ${kept}`);
+  });
 });

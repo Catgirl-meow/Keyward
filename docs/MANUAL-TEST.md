@@ -98,6 +98,10 @@ happened.
       while they run. The breach check (Have I Been Pwned) and the two-step check
       (2fa.directory) run only when you start them. **Duplicate websites** lists logins with
       two websites where one already covers the other.
+- [ ] Watchtower again: close the popup and reopen it. The report (breach and two-step
+      results included) is back at once, without checking the vault again. Change a password
+      and the report updates; once the breach check has run, the new password is looked up
+      on its own.
 - [ ] Generator: a password, a passphrase, and a forwarded alias if you use SimpleLogin or
       addy.io.
 

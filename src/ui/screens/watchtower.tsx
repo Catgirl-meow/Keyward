@@ -5,7 +5,7 @@ import { Banner, EmptyState, Group, Icon, IconButton, Row, Skeleton, Spinner, To
 import * as I from "../icons/index.ts";
 import { items } from "../data/app.ts";
 import { pop, push } from "../data/nav.ts";
-import { checkExposed, checkInactive2fa, checking, net, report, reportError, runReport, type NetCheck } from "../data/watchtower.ts";
+import { checkExposed, checkInactive2fa, checking, ensureReport, net, report, reportError, runReport, scoring, type NetCheck } from "../data/watchtower.ts";
 import { ItemAvatar } from "./vault-list.tsx";
 
 type Tone = "error" | "warn" | "info";
@@ -56,12 +56,9 @@ const NET: Partial<Record<CheckId, { run: () => Promise<void>; key: NetCheck }>>
 
 /** Keeps the report in step with the vault while a Watchtower screen is shown. */
 function useReport() {
-  const r = report.value;
-  const stale = !r || r.basis !== items.value;
-  useEffect(() => {
-    if (stale && !checking.value) void runReport();
-  }, [stale]);
-  return r;
+  const list = items.value;
+  useEffect(() => void ensureReport(), [list]);
+  return report.value;
 }
 
 function ago(t: number): string {
@@ -79,16 +76,18 @@ function Card({ c }: { c: Check }) {
   const ns = nc ? net.value[nc.key] : null;
   // A network check nobody ran yet (or that failed) runs on click; one with results opens them.
   const pending = !!nc && !found;
-  const running = ns?.state === "running";
+  // The weak-password card waits for zxcvbn; a network card for its lookups.
+  const progress = (c.id === "weak" ? scoring.value : null) ?? (ns?.state === "running" ? ns : null);
+  const running = !!progress;
   let body: string;
-  if (running) body = ns.total > 1 ? `Checking ${ns.done} of ${ns.total}` : "Checking…";
+  if (progress) body = progress.total > 1 ? `Checking ${progress.done} of ${progress.total}` : "Checking…";
   else if (ns?.state === "error") body = ns.message;
   else if (pending) body = c.ask!;
   else body = n ? (n === 1 ? "1 item" : `${n} items`) : "Nothing found";
   const tone = n ? c.tone : pending ? "pending" : "clear";
   const onClick = running ? undefined : pending || ns?.state === "error" ? () => void nc!.run() : n ? () => push({ name: "watch-list", check: c.id }) : undefined;
   return (
-    <button type="button" class={`wt-card ${tone}`} data-check={c.id} data-count={pending ? "" : String(n)} data-state={ns?.state} disabled={!onClick} onClick={onClick}>
+    <button type="button" class={`wt-card ${tone}`} data-check={c.id} data-count={pending || running ? "" : String(n)} data-state={ns?.state} disabled={!onClick} onClick={onClick}>
       <div class="wt-card-top">
         <span class="wt-ico"><Icon d={c.icon} /></span>
         <span class="wt-count">{running ? <Spinner size={28} /> : pending ? <Icon d={I.refresh} /> : n}</span>
@@ -104,8 +103,8 @@ export function WatchtowerScreen() {
   const refresh = (
     <IconButton icon={I.refresh} label="Check again" class={checking.value ? "spin-slow" : ""} disabled={checking.value}
       onClick={() => {
-        // Run the network checks that already ran again too.
-        void runReport().then(() => (Object.keys(NET) as CheckId[]).forEach((c) => net.value[NET[c]!.key].state === "done" && void NET[c]!.run()));
+        // The network checks that already ran look everything up again too.
+        void runReport(true);
       }} />
   );
   if (!r) {

@@ -3,7 +3,7 @@
 import { computed, effect, signal } from "@preact/signals";
 import type { RawSend } from "../../core/send/send.ts";
 import { VaultDB } from "../../core/store/db.ts";
-import { loadSnapshot, type AuxData } from "../../core/store/summaries.ts";
+import { loadSnapshot, seal, unseal, type AuxData } from "../../core/store/summaries.ts";
 import { decryptCipher, type KeyRing } from "../../core/vault/cipher.ts";
 import type { CipherView, RawCipher, RawFolder, Summary } from "../../core/vault/types.ts";
 import { loadAccounts, saveAccounts, type Account, type AccountsState } from "../../platform/accounts.ts";
@@ -160,6 +160,25 @@ export async function rawSends(): Promise<RawSend[]> {
 /** The server's equivalent-domain groups (google.com = youtube.com …), from the last sync. */
 export async function equivalentDomains(): Promise<string[][]> {
   return (await db?.meta<string[][]>("domains")) ?? [];
+}
+
+/**
+ * A value this page keeps in the open vault's database (Watchtower's results), sealed with the
+ * same key as the item list, so it is unreadable while locked and gone after a key rotation.
+ */
+export async function loadSealed<T>(name: string): Promise<T | undefined> {
+  const id = vaultOwner.value;
+  const [d, key] = [db, id ? await getCacheKey(id) : null];
+  const blob = d && key ? await d.meta<Uint8Array>(name) : undefined;
+  return blob ? unseal<T>(key!, blob).catch(() => undefined) : undefined;
+}
+
+/** Writes what loadSealed reads, unless `owner`'s vault is no longer the one open here. */
+export async function saveSealed(owner: string, name: string, value: unknown): Promise<void> {
+  const d = db;
+  const key = await getCacheKey(owner);
+  if (!d || !key || vaultOwner.value !== owner) return;
+  await d.setMeta(name, await seal(key, value));
 }
 
 export async function rawItem(id: string): Promise<RawCipher | undefined> {
